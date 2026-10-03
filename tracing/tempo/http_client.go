@@ -342,7 +342,7 @@ func (oc *OtelHTTPClient) GetTraceQLQuery(ctx context.Context, u *url.URL, traci
 func hasErrors(trace otelModel.Trace) bool {
 	for _, span := range trace.SpanSet.Spans {
 		for _, atb := range span.Attributes {
-			if atb.Key == "status" && atb.Value.StringValue == "error" {
+			if atb.Key == "status" && atb.Value.String() == "error" {
 				return true
 			}
 		}
@@ -356,7 +356,7 @@ func hasErrors(trace otelModel.Trace) bool {
 func getServiceName(attributes []otelJson.Attribute) string {
 	for _, attb := range attributes {
 		if attb.Key == "service.name" {
-			return attb.Value.StringValue
+			return attb.Value.String()
 		}
 	}
 	return ""

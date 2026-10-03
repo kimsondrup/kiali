@@ -15,6 +15,9 @@ import (
 
 	"github.com/kiali/kiali/models"
 	"github.com/kiali/kiali/tracing/jaeger/model/json"
+	otelModel "github.com/kiali/kiali/tracing/otel/model"
+	otelJson "github.com/kiali/kiali/tracing/otel/model/json"
+	"github.com/kiali/kiali/util"
 )
 
 const (
@@ -147,6 +150,34 @@ func TestGetTrace(t *testing.T) {
 	assert.NotNil(t, response.Data)
 	assert.Equal(t, len(response.Data.Spans), 8)
 	assert.Equal(t, response.Data.Matched, 8)
+}
+
+// TestHasErrors checks the two ways a span in a search result reports that it failed, which is
+// what an error filter on the traces list reads.
+func TestHasErrors(t *testing.T) {
+	cases := map[string]struct {
+		span     otelModel.Span
+		expected bool
+	}{
+		"a status attribute": {
+			span:     otelModel.Span{Attributes: []otelJson.Attribute{{Key: "status", Value: otelJson.AnyValue{StringValue: util.AsPtr("error")}}}},
+			expected: true,
+		},
+		"the span status code": {
+			span:     otelModel.Span{Status: otelJson.Status{Code: "STATUS_CODE_ERROR"}},
+			expected: true,
+		},
+		"a span that did not fail": {
+			span: otelModel.Span{Attributes: []otelJson.Attribute{{Key: "http.method", Value: otelJson.AnyValue{StringValue: util.AsPtr("GET")}}}},
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			trace := otelModel.Trace{SpanSet: otelModel.SpanSet{Spans: []otelModel.Span{tc.span}}}
+			assert.Equal(t, tc.expected, hasErrors(trace))
+		})
+	}
 }
 
 func TestErrorResponse(t *testing.T) {

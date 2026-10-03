@@ -1,6 +1,7 @@
 package converter
 
 import (
+	"math"
 	"strconv"
 
 	"github.com/kiali/kiali/log"
@@ -190,11 +191,12 @@ func convertReferences(traceId jaegerModels.TraceID, parentSpanId jaegerModels.S
 func convertAttributes(attributes []otelModels.Attribute, status otelModels.Status) []jaegerModels.KeyValue {
 	var tags []jaegerModels.KeyValue
 	for _, atb := range attributes {
-		if atb.Key == "status" && atb.Value.StringValue == "error" {
+		if atb.Key == "status" && atb.Value.String() == "error" {
 			tag := jaegerModels.KeyValue{Key: "error", Value: true, Type: "bool"}
 			tags = append(tags, tag)
 		} else {
-			tag := jaegerModels.KeyValue{Key: atb.Key, Value: atb.Value.StringValue, Type: "string"}
+			value, valueType := attributeValue(atb.Value)
+			tag := jaegerModels.KeyValue{Key: atb.Key, Value: value, Type: valueType}
 			tags = append(tags, tag)
 		}
 	}
@@ -204,6 +206,29 @@ func convertAttributes(attributes []otelModels.Attribute, status otelModels.Stat
 		tags = append(tags, tag)
 	}
 	return tags
+}
+
+// attributeValue maps an OTLP attribute value onto a Jaeger tag value and the tag type that
+// describes it. Jaeger's own API reports typed tags for the same attributes, and the UI reads
+// some of them as numbers and booleans rather than as text.
+func attributeValue(value otelModels.AnyValue) (any, jaegerModels.ValueType) {
+	switch {
+	case value.BoolValue != nil:
+		return *value.BoolValue, jaegerModels.BoolType
+	case value.IntValue != nil:
+		return *value.IntValue, jaegerModels.Int64Type
+	case value.DoubleValue != nil:
+		// JSON has no NaN and no infinity, so a double that is not a finite number is reported
+		// as its text. A number tag holding one could not be encoded into Kiali's own response.
+		if math.IsNaN(*value.DoubleValue) || math.IsInf(*value.DoubleValue, 0) {
+			return value.String(), jaegerModels.StringType
+		}
+		return *value.DoubleValue, jaegerModels.Float64Type
+	case value.BytesValue != nil:
+		return *value.BytesValue, jaegerModels.BinaryType
+	}
+	// a string, an array or a kvlist, all of which Jaeger reports as a string tag too
+	return value.String(), jaegerModels.StringType
 }
 
 func convertModelAttributes(attributes []*v1.KeyValue) []jaegerModels.KeyValue {
