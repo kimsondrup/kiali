@@ -150,6 +150,27 @@ func TestConvertAttributes(t *testing.T) {
 			}}},
 			wantValue: `["a",2]`, wantType: jaegerModels.StringType,
 		},
+		// json.Marshal refuses a non-finite double, and refuses the whole value it sits in. Before
+		// the text conversion moved into plainValue, these two cost the attribute every element it
+		// had and left the tag empty, so the sibling value is the point of the case.
+		"an array holding a NaN keeps its siblings": {
+			value: &commonv1.AnyValue{Value: &commonv1.AnyValue_ArrayValue{ArrayValue: &commonv1.ArrayValue{
+				Values: []*commonv1.AnyValue{
+					{Value: &commonv1.AnyValue_DoubleValue{DoubleValue: 1.5}},
+					{Value: &commonv1.AnyValue_DoubleValue{DoubleValue: math.NaN()}},
+				},
+			}}},
+			wantValue: `[1.5,"NaN"]`, wantType: jaegerModels.StringType,
+		},
+		"a map holding an infinity keeps its other keys": {
+			value: &commonv1.AnyValue{Value: &commonv1.AnyValue_KvlistValue{KvlistValue: &commonv1.KeyValueList{
+				Values: []*commonv1.KeyValue{
+					{Key: "ok", Value: &commonv1.AnyValue{Value: &commonv1.AnyValue_IntValue{IntValue: 7}}},
+					{Key: "over", Value: &commonv1.AnyValue{Value: &commonv1.AnyValue_DoubleValue{DoubleValue: math.Inf(1)}}},
+				},
+			}}},
+			wantValue: `{"ok":7,"over":"+Inf"}`, wantType: jaegerModels.StringType,
+		},
 		"a map": {
 			value: &commonv1.AnyValue{Value: &commonv1.AnyValue_KvlistValue{KvlistValue: &commonv1.KeyValueList{
 				Values: []*commonv1.KeyValue{

@@ -241,11 +241,8 @@ func attributeValue(value any) (any, jaegerModels.ValueType) {
 	case int64:
 		return plain, jaegerModels.Int64Type
 	case float64:
-		// JSON has no NaN and no infinity, so a double that is not a finite number is reported as
-		// its text: a number tag holding one could not be encoded into Kiali's own response.
-		if math.IsNaN(plain) || math.IsInf(plain, 0) {
-			return strconv.FormatFloat(plain, 'g', -1, 64), jaegerModels.StringType
-		}
+		// Finite by construction: plainValue and plainModelValue hand a non-finite double over as
+		// text, because one nested in an array or a map would fail json.Marshal below.
 		return plain, jaegerModels.Float64Type
 	case []byte:
 		return plain, jaegerModels.BinaryType
@@ -266,6 +263,11 @@ func attributeValue(value any) (any, jaegerModels.ValueType) {
 
 // plainValue returns an OTLP attribute value as a plain Go value, nested values included, and
 // nil when no variant of it is set.
+//
+// A double that is not a finite number comes back as its text rather than as a float64. JSON has
+// no literal for NaN or an infinity, so json.Marshal refuses one, and it is refused for the whole
+// value it sits in: left as a float64, a single NaN inside an array would cost that attribute
+// every one of its elements, not just the one that could not be written.
 func plainValue(value *commonv1.AnyValue) any {
 	switch variant := value.GetValue().(type) {
 	case *commonv1.AnyValue_StringValue:
@@ -275,7 +277,7 @@ func plainValue(value *commonv1.AnyValue) any {
 	case *commonv1.AnyValue_IntValue:
 		return variant.IntValue
 	case *commonv1.AnyValue_DoubleValue:
-		return variant.DoubleValue
+		return finiteOrText(variant.DoubleValue)
 	case *commonv1.AnyValue_BytesValue:
 		return variant.BytesValue
 	case *commonv1.AnyValue_ArrayValue:
@@ -294,6 +296,15 @@ func plainValue(value *commonv1.AnyValue) any {
 		return values
 	}
 	return nil
+}
+
+// finiteOrText returns a double as itself, or as its text when it is NaN or an infinity, so that
+// the value can be written as JSON wherever it appears, nested or not.
+func finiteOrText(value float64) any {
+	if math.IsNaN(value) || math.IsInf(value, 0) {
+		return strconv.FormatFloat(value, 'g', -1, 64)
+	}
+	return value
 }
 
 // convertModelAttributes is convertAttributes for the Tempo gRPC stream, which carries the same
@@ -326,7 +337,7 @@ func plainModelValue(value *v1.AnyValue) any {
 	case *v1.AnyValue_IntValue:
 		return variant.IntValue
 	case *v1.AnyValue_DoubleValue:
-		return variant.DoubleValue
+		return finiteOrText(variant.DoubleValue)
 	case *v1.AnyValue_BytesValue:
 		return variant.BytesValue
 	case *v1.AnyValue_ArrayValue:
