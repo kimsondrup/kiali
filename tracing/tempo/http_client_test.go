@@ -288,7 +288,12 @@ func TestGetTraceEmpty(t *testing.T) {
 	response, err := tempoClient.GetTraceDetailHTTP(context.Background(), httpClient, baseUrl, "3ba55609c3cde49649cd77d1f9dcd936")
 	assert.Nil(t, err)
 	assert.NotNil(t, response)
+	// NotNil as well as Empty: a nil slice marshals to JSON null, which is what the frontend
+	// chokes on, and Empty alone is satisfied by either.
+	assert.NotNil(t, response.Data.Spans)
 	assert.Empty(t, response.Data.Spans)
+	assert.NotNil(t, response.Data.Processes)
+	assert.NotNil(t, response.Data.Warnings)
 }
 
 // TestGetTraceTwoScopes covers a resource whose spans arrive in more than one group. A resource
@@ -450,6 +455,7 @@ func TestGetTracesWithoutSpanSet(t *testing.T) {
 	response, err := tempoClient.GetAppTracesHTTP(context.Background(), httpClient, baseUrl, serviceName, models.TracingQuery{})
 	assert.Nil(t, err)
 	assert.Equal(t, 1, len(response.Data))
+	assert.NotNil(t, response.Data[0].Spans)
 	assert.Empty(t, response.Data[0].Spans)
 }
 

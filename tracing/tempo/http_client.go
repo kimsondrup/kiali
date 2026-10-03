@@ -257,6 +257,9 @@ func convertBatchTrace(trace otelModel.Trace, serviceName string) (jaegerModels.
 	for _, span := range trace.SpanSet.Spans {
 		jaegerModel.Spans = append(jaegerModel.Spans, converter.ConvertSpanSet(span, serviceName, trace.TraceID, trace.RootTraceName)...)
 	}
+	if jaegerModel.Spans == nil {
+		jaegerModel.Spans = []jaegerModels.Span{}
+	}
 	jaegerModel.Matched = trace.SpanSet.Matched
 	jaegerModel.Processes = map[jaegerModels.ProcessID]jaegerModels.Process{}
 	jaegerModel.Warnings = []string{}
@@ -282,10 +285,17 @@ func convertSingleTrace(traces *tracev1.TracesData, id string) (*model.TracingRe
 			}
 		}
 		jaegerModel.Matched = len(jaegerModel.Spans)
-		jaegerModel.Processes = map[jaegerModels.ProcessID]jaegerModels.Process{}
-		jaegerModel.Warnings = []string{}
-
 	}
+	// Set whether or not there were any spans. A nil slice or map here serialises as JSON null,
+	// and the frontend's transformTraceData reads each of the three without checking, so a trace
+	// carrying no spans would take the Traces tab down with a TypeError rather than render as
+	// empty. Tempo answers 404 rather than sending such a body, but nothing in this function can
+	// rely on that.
+	if jaegerModel.Spans == nil {
+		jaegerModel.Spans = []jaegerModels.Span{}
+	}
+	jaegerModel.Processes = map[jaegerModels.ProcessID]jaegerModels.Process{}
+	jaegerModel.Warnings = []string{}
 
 	response.Data = append(response.Data, jaegerModel)
 
