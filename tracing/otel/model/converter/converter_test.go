@@ -192,7 +192,7 @@ func TestConvertAttributes(t *testing.T) {
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
 			attributes := []*commonv1.KeyValue{{Key: "k", Value: tc.value}}
-			tags := convertAttributes(attributes, tracev1.Status_STATUS_CODE_UNSET)
+			tags := convertAttributes(attributes)
 
 			assert.Len(t, tags, 1)
 			assert.Equal(t, "k", tags[0].Key)
@@ -202,24 +202,35 @@ func TestConvertAttributes(t *testing.T) {
 	}
 }
 
-// TestConvertAttributesError covers the two ways a span says it failed: the status attribute
-// Tempo's search API selects, and the span status the OTLP proto carries.
+// TestConvertAttributesError covers how a span matched by Tempo's search API says it failed: the
+// "status" attribute, which is the TraceQL status intrinsic prepareTraceQL selects. Measured
+// against Tempo 3.1.0, its three values are "error", "ok" and "unset".
 func TestConvertAttributesError(t *testing.T) {
 	errorTag := jaegerModels.KeyValue{Key: "error", Value: true, Type: jaegerModels.BoolType}
 
 	attribute := []*commonv1.KeyValue{
 		{Key: "status", Value: &commonv1.AnyValue{Value: &commonv1.AnyValue_StringValue{StringValue: "error"}}},
 	}
-	assert.Equal(t, []jaegerModels.KeyValue{errorTag}, convertAttributes(attribute, tracev1.Status_STATUS_CODE_UNSET))
+	assert.Equal(t, []jaegerModels.KeyValue{errorTag}, convertAttributes(attribute))
 
 	unset := []*commonv1.KeyValue{
 		{Key: "status", Value: &commonv1.AnyValue{Value: &commonv1.AnyValue_StringValue{StringValue: "unset"}}},
 	}
 	assert.Equal(t, []jaegerModels.KeyValue{{Key: "status", Value: "unset", Type: jaegerModels.StringType}},
-		convertAttributes(unset, tracev1.Status_STATUS_CODE_UNSET))
+		convertAttributes(unset))
+}
 
-	assert.Equal(t, []jaegerModels.KeyValue{errorTag}, convertAttributes(nil, tracev1.Status_STATUS_CODE_ERROR))
-	assert.Nil(t, convertAttributes(nil, tracev1.Status_STATUS_CODE_OK))
+// TestConvertStatus covers the span-level status, which arrives on the trace detail path, where
+// the response really is OTLP. The mapping to non-OTLP formats says a status of UNSET MUST NOT
+// be reported at all.
+func TestConvertStatus(t *testing.T) {
+	errorTag := jaegerModels.KeyValue{Key: "error", Value: true, Type: jaegerModels.BoolType}
+
+	assert.Equal(t, []jaegerModels.KeyValue{errorTag},
+		convertStatus(&tracev1.Status{Code: tracev1.Status_STATUS_CODE_ERROR}))
+	assert.Nil(t, convertStatus(&tracev1.Status{Code: tracev1.Status_STATUS_CODE_OK}))
+	assert.Nil(t, convertStatus(&tracev1.Status{Code: tracev1.Status_STATUS_CODE_UNSET}))
+	assert.Nil(t, convertStatus(nil))
 }
 
 // TestConvertModelAttributes covers the same attributes on the Tempo gRPC path, which reads

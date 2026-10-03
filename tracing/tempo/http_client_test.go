@@ -326,23 +326,30 @@ func TestGetTraceTwoScopes(t *testing.T) {
 	assert.Equal(t, json.SpanID("0807060504030201"), response.Data.Spans[1].SpanID)
 }
 
-// TestGetTracesErrorsOnly covers the Errors only filter, which keeps a trace whose matched span
-// reports an error. A span reports one either as the OTLP status code or as the "status"
-// attribute Tempo's search API selects, and the code arrives as a name or as a number.
+// TestGetTracesErrorsOnly covers the Errors only filter on the search path, in the shape Tempo
+// 3.1.0 answers in. Tempo writes no span-level status there: asked for one with select(status),
+// as prepareTraceQL does, it answers with an attribute keyed "status" whose value is the TraceQL
+// status intrinsic as text. Measured over a live Tempo, its three values are "error", "ok" and
+// "unset".
+//
+// The fourth trace's span carries no status attribute at all. That one is defensive rather than
+// measured: every span of every captured search response in ../tracingtest carries the
+// attribute, and a span that arrives without it has to read as a span that did not fail.
 func TestGetTracesErrorsOnly(t *testing.T) {
 	baseUrl := getBaseUrl()
 
-	span := func(id, status string) string {
+	span := func(id, attributes string) string {
 		return `{"spanID":"` + id + `","startTimeUnixNano":"1701779876570888000","durationNanos":"1000",` +
-			`"attributes":[{"key":"service.name","value":{"stringValue":"orders-api"}}],` + status + `}`
+			`"attributes":[{"key":"service.name","value":{"stringValue":"orders-api"}}` + attributes + `]}`
+	}
+	status := func(value string) string {
+		return `,{"key":"status","value":{"stringValue":"` + value + `"}}`
 	}
 	body := `{"traces":[` +
-		`{"traceID":"aa00000000000000000000000000000a","spanSet":{"spans":[` + span("0101010101010101", `"status":{"code":"STATUS_CODE_UNSET"}`) + `]}},` +
-		`{"traceID":"bb00000000000000000000000000000b","spanSet":{"spans":[` + span("0202020202020202", `"status":{"code":"STATUS_CODE_ERROR"}`) + `]}},` +
-		`{"traceID":"cc00000000000000000000000000000c","spanSet":{"spans":[` + span("0303030303030303", `"status":{"code":2}`) + `]}},` +
-		`{"traceID":"dd00000000000000000000000000000d","spanSet":{"spans":[` +
-		`{"spanID":"0404040404040404","startTimeUnixNano":"1701779876570888000","durationNanos":"1000",` +
-		`"attributes":[{"key":"status","value":{"stringValue":"error"}}],"status":{}}` + `]}}` +
+		`{"traceID":"aa00000000000000000000000000000a","spanSet":{"spans":[` + span("0101010101010101", status("unset")) + `]}},` +
+		`{"traceID":"bb00000000000000000000000000000b","spanSet":{"spans":[` + span("0202020202020202", status("error")) + `]}},` +
+		`{"traceID":"cc00000000000000000000000000000c","spanSet":{"spans":[` + span("0303030303030303", status("ok")) + `]}},` +
+		`{"traceID":"dd00000000000000000000000000000d","spanSet":{"spans":[` + span("0404040404040404", "") + `]}}` +
 		`]}`
 
 	httpClient := http.Client{Transport: RoundTripFunc(func(req *http.Request) *http.Response {
@@ -362,37 +369,12 @@ func TestGetTracesErrorsOnly(t *testing.T) {
 	failed, err := tempoClient.GetAppTracesHTTP(context.Background(), httpClient, baseUrl, serviceName,
 		models.TracingQuery{Tags: map[string]string{"error": "true"}})
 	assert.Nil(t, err)
-	require.Equal(t, 3, len(failed.Data))
+	require.Equal(t, 1, len(failed.Data))
 	assert.Equal(t, json.TraceID("bb00000000000000000000000000000b"), failed.Data[0].TraceID)
-	assert.Equal(t, json.TraceID("cc00000000000000000000000000000c"), failed.Data[1].TraceID)
-	assert.Equal(t, json.TraceID("dd00000000000000000000000000000d"), failed.Data[2].TraceID)
-}
-
-// TestGetTracesNullStatus covers a search response that writes the status of a span as null,
-// which means the span reports none. encoding/json hands that null to the status itself, and a
-// response must not be lost over it.
-func TestGetTracesNullStatus(t *testing.T) {
-	baseUrl := getBaseUrl()
-
-	body := `{"traces":[{"traceID":"cafe9bc0903e18f6b914752f8ee577a5","spanSet":{"spans":[` +
-		`{"spanID":"0101010101010101","startTimeUnixNano":"1701779876570888000","durationNanos":"1000",` +
-		`"attributes":null,"status":null}]}}]}`
-
-	httpClient := http.Client{Transport: RoundTripFunc(func(req *http.Request) *http.Response {
-		return &http.Response{
-			StatusCode: http.StatusOK,
-			Body:       io.NopCloser(strings.NewReader(body)),
-		}
-	})}
-
-	tempoClient, err := NewOtelClient(context.TODO())
-	assert.Nil(t, err)
-
-	response, err := tempoClient.GetAppTracesHTTP(context.Background(), httpClient, baseUrl, serviceName, models.TracingQuery{})
-	assert.Nil(t, err)
-	require.Equal(t, 1, len(response.Data))
-	assert.Equal(t, 1, len(response.Data[0].Spans))
-	assert.Empty(t, response.Data[0].Spans[0].Tags)
+	// the errored span reports the boolean tag Kiali's frontend reads, not the attribute
+	require.Equal(t, 1, len(failed.Data[0].Spans))
+	assert.Contains(t, failed.Data[0].Spans[0].Tags,
+		json.KeyValue{Key: "error", Value: true, Type: json.BoolType})
 }
 
 // TestUnreadableBody covers a 200 body that cannot be read. A trace detail used to be answered

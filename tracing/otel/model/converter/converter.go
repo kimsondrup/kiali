@@ -63,7 +63,7 @@ func ConvertSpans(spans []*tracev1.Span, scope *commonv1.InstrumentationScope, s
 			Flags:         0,
 			OperationName: span.GetName(),
 			References:    convertReferences(jaegerTraceId, parentSpanId),
-			Tags:          append(convertAttributes(span.GetAttributes(), span.GetStatus().GetCode()), scopeTags...),
+			Tags:          append(append(convertAttributes(span.GetAttributes()), convertStatus(span.GetStatus())...), scopeTags...),
 			Logs:          []jaegerModels.Log{},
 			ProcessID:     "",
 			Process:       &jaegerModels.Process{Tags: []jaegerModels.KeyValue{}, ServiceName: serviceName},
@@ -157,7 +157,7 @@ func ConvertSpanSet(span otel.Span, serviceName string, traceId string, rootName
 		Flags: 0,
 		// OperationName: span.Name,
 		References:    []jaegerModels.Reference{},
-		Tags:          convertAttributes(span.Attributes, span.Status.Code),
+		Tags:          convertAttributes(span.Attributes),
 		Logs:          []jaegerModels.Log{},
 		OperationName: operationName,
 		ProcessID:     "",
@@ -226,7 +226,25 @@ func convertScope(scope *commonv1.InstrumentationScope) []jaegerModels.KeyValue 
 	return tags
 }
 
-func convertAttributes(attributes []*commonv1.KeyValue, status tracev1.Status_StatusCode) []jaegerModels.KeyValue {
+// convertStatus reports an OTLP span status as span tags. The mapping to non-OTLP formats
+// requires the status to be reported as key-value pairs on the span "unless the Status is UNSET.
+// In the latter case it MUST NOT be reported."
+// https://opentelemetry.io/docs/specs/otel/common/mapping-to-non-otlp/#span-status
+//
+// It is its own function rather than a parameter of convertAttributes because only one of that
+// function's two callers has a status to pass: Tempo's search API answers with the TraceQL
+// status intrinsic as an attribute, not with the span-level status the OTLP proto declares.
+func convertStatus(status *tracev1.Status) []jaegerModels.KeyValue {
+	var tags []jaegerModels.KeyValue
+	// Jaeger's own OTLP translation adds this boolean for an errored span, and Kiali's frontend
+	// reads it as the one signal that a span failed, so the Tempo path has to report it too.
+	if status.GetCode() == tracev1.Status_STATUS_CODE_ERROR {
+		tags = append(tags, jaegerModels.KeyValue{Key: "error", Value: true, Type: jaegerModels.BoolType})
+	}
+	return tags
+}
+
+func convertAttributes(attributes []*commonv1.KeyValue) []jaegerModels.KeyValue {
 	var tags []jaegerModels.KeyValue
 	for _, atb := range attributes {
 		if atb.GetKey() == "status" && atb.GetValue().GetStringValue() == "error" {
@@ -237,11 +255,6 @@ func convertAttributes(attributes []*commonv1.KeyValue, status tracev1.Status_St
 			tag := jaegerModels.KeyValue{Key: atb.GetKey(), Value: value, Type: valueType}
 			tags = append(tags, tag)
 		}
-	}
-	// When Span Status is set to ERROR, an error span tag MUST be added with the Boolean value of true
-	if status == tracev1.Status_STATUS_CODE_ERROR {
-		tag := jaegerModels.KeyValue{Key: "error", Value: true, Type: jaegerModels.BoolType}
-		tags = append(tags, tag)
 	}
 	return tags
 }

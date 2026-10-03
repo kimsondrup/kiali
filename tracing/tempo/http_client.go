@@ -366,15 +366,15 @@ func (oc *OtelHTTPClient) GetTraceQLQuery(ctx context.Context, u *url.URL, traci
 	return u.RawQuery
 }
 
+// hasErrors reports whether a matched span of the trace failed. The signal is the "status"
+// attribute, which is the TraceQL status intrinsic prepareTraceQL selects: Tempo answers it as
+// text, and "error" is the value it uses for a span whose OTLP status code is ERROR.
 func hasErrors(trace otelModel.Trace) bool {
 	for _, span := range trace.SpanSet.Spans {
 		for _, atb := range span.Attributes {
 			if atb.GetKey() == "status" && atb.GetValue().GetStringValue() == "error" {
 				return true
 			}
-		}
-		if span.Status.Code == tracev1.Status_STATUS_CODE_ERROR {
-			return true
 		}
 	}
 	return false

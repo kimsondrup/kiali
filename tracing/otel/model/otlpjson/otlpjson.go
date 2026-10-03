@@ -17,7 +17,6 @@
 package otlpjson
 
 import (
-	"bytes"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -60,10 +59,6 @@ const (
 // Kiali builds against, must not be able to blank the traces list. The cost is that such a field
 // is dropped with nothing said about it.
 var unmarshalOptions = protojson.UnmarshalOptions{DiscardUnknown: true}
-
-// jsonNull is the literal encoding/json hands an UnmarshalJSON method for a field written as
-// null, which it documents as meaning the field is absent.
-var jsonNull = []byte("null")
 
 // UnmarshalTracesData reads a trace response, whichever of the envelopes above it uses. A
 // response that uses none of them is an error rather than a trace with no spans, so that a
@@ -181,13 +176,12 @@ func resourceSpans(body []byte, depth int) (json.RawMessage, error) {
 // in it unchanged, so they arrive through encoding/json, which cannot read an AnyValue: its
 // variants are a protobuf oneof, and a oneof is a Go interface the generated code fills in.
 // Each attribute is handed to protojson on its own instead.
+//
+// A list written as null needs no case of its own: encoding/json hands the literal null to the
+// method below, and reading it into the raw list yields no elements and no error.
 type Attributes []*commonv1.KeyValue
 
 func (a *Attributes) UnmarshalJSON(data []byte) error {
-	if bytes.Equal(data, jsonNull) {
-		return nil
-	}
-
 	var raw []json.RawMessage
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return err
@@ -221,26 +215,4 @@ func attributeKey(item json.RawMessage) string {
 		return ""
 	}
 	return named.Key
-}
-
-// Status is an OTLP span status carried the same way, so that its code arrives as the enum the
-// proto declares rather than as whichever text or number the backend wrote it as.
-type Status struct {
-	Code tracev1.Status_StatusCode
-}
-
-func (s *Status) UnmarshalJSON(data []byte) error {
-	if bytes.Equal(data, jsonNull) {
-		return nil
-	}
-
-	status := &tracev1.Status{}
-	if err := unmarshalOptions.Unmarshal(data, status); err != nil {
-		// as with an attribute: a status that cannot be read costs one span its error tag, and
-		// must not cost the search its traces
-		log.Warningf("[OTLP JSON] Could not read the status of a span: %s", err)
-		return nil
-	}
-	s.Code = status.GetCode()
-	return nil
 }

@@ -23,14 +23,17 @@ type TagsResponse struct {
 }
 
 // Span is a span of a trace matched by Tempo's search API. The shape is Tempo's own, not OTLP,
-// but the attributes and the status of the matched span are OTLP and are carried as such.
+// but the attributes of the matched span are OTLP and are carried as such.
+//
+// There is no status field: Tempo does not write a span-level status here. Asked for one with
+// select(status), it answers with an attribute keyed "status" whose value is the TraceQL status
+// intrinsic as text - "unset", "ok" or "error".
 type Span struct {
 	SpanID            string              `json:"spanID"`
 	StartTimeUnixNano string              `json:"startTimeUnixNano"`
 	DurationNanos     string              `json:"durationNanos"`
 	Attributes        otlpjson.Attributes `json:"attributes"`
 	Name              string              `json:"name"`
-	Status            otlpjson.Status     `json:"status"`
 }
 
 type SpanSet struct {

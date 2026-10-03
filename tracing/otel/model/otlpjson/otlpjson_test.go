@@ -201,33 +201,6 @@ func TestAttributesBridgeTolerance(t *testing.T) {
 	}
 }
 
-func TestStatusBridge(t *testing.T) {
-	cases := map[string]struct {
-		body string
-		want tracev1.Status_StatusCode
-	}{
-		"by name":   {body: `{"code":"STATUS_CODE_ERROR"}`, want: tracev1.Status_STATUS_CODE_ERROR},
-		"by number": {body: `{"code":2}`, want: tracev1.Status_STATUS_CODE_ERROR},
-		"absent":    {body: `{}`, want: tracev1.Status_STATUS_CODE_UNSET},
-		// Measured against Tempo 3.1.0: it does NOT write a span-level status at all. Asked for
-		// one with select(status), it answers with an attribute keyed "status" whose value is the
-		// TraceQL intrinsic as text, "unset" or "error", so this method is never reached on that
-		// path. The null case is kept because encoding/json hands null straight to the method
-		// wherever a backend does write one, and failing the whole response over it would be
-		// worse than reading it as absent.
-		"written as null":       {body: `null`, want: tracev1.Status_STATUS_CODE_UNSET},
-		"a code we cannot read": {body: `{"code":{"nested":true}}`, want: tracev1.Status_STATUS_CODE_UNSET},
-	}
-
-	for name, tc := range cases {
-		t.Run(name, func(t *testing.T) {
-			var status Status
-			require.NoError(t, json.Unmarshal([]byte(tc.body), &status))
-			assert.Equal(t, tc.want, status.Code)
-		})
-	}
-}
-
 // TestUnmarshalHexIDs covers the one place the OTLP/JSON encoding departs from the protobuf
 // JSON mapping. Both forms have to be read, and the hex one is the dangerous one: hex text is
 // valid base64, so protojson reads it without reporting anything.
