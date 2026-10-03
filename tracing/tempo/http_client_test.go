@@ -190,9 +190,10 @@ func TestGetTraceBatches(t *testing.T) {
 		`"attributes":[{"key":"http.response.status_code","value":{"intValue":"503"}}]}`
 
 	cases := map[string]struct {
-		body          string
-		expectedSpans int
-		expectedTags  []json.KeyValue
+		body           string
+		expectedSpans  int
+		expectedScopes []string
+		expectedTags   []json.KeyValue
 	}{
 		"an empty trace": {
 			body: `{}`,
@@ -208,7 +209,8 @@ func TestGetTraceBatches(t *testing.T) {
 				{"scope":{"name":"io.opentelemetry.http"},"spans":[`+span+`]},
 				{"scope":{"name":"io.opentelemetry.jdbc"},"spans":[`+span+`,`+span+`]}
 			]}]}`, serviceName, "aa", "http-handler", "bb", "select", "cc", "insert"),
-			expectedSpans: 3,
+			expectedSpans:  3,
+			expectedScopes: []string{"io.opentelemetry.http", "io.opentelemetry.jdbc", "io.opentelemetry.jdbc"},
 			expectedTags: []json.KeyValue{
 				{Key: "http.response.status_code", Value: int64(503), Type: json.Int64Type},
 				{Key: "span.kind", Value: "server", Type: json.StringType},
@@ -236,6 +238,9 @@ func TestGetTraceBatches(t *testing.T) {
 			require.Len(t, response.Data.Spans, tc.expectedSpans)
 			assert.Equal(t, tc.expectedSpans, response.Data.Matched)
 
+			for i, expectedScope := range tc.expectedScopes {
+				assert.Contains(t, response.Data.Spans[i].Tags, json.KeyValue{Key: "otel.scope.name", Value: expectedScope, Type: json.StringType})
+			}
 			for _, tag := range tc.expectedTags {
 				assert.Contains(t, response.Data.Spans[0].Tags, tag)
 			}

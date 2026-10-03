@@ -265,7 +265,7 @@ func convertSingleTrace(traces *otelJson.Data, id string) (*model.TracingRespons
 			// a resource carries one group of spans per instrumentation scope, and a service
 			// that uses more than one instrumentation library sends more than one group
 			for _, scopeSpan := range batch.ScopeSpans {
-				jaegerModel.Spans = append(jaegerModel.Spans, converter.ConvertSpans(scopeSpan.Spans, serviceName, id)...)
+				jaegerModel.Spans = append(jaegerModel.Spans, converter.ConvertSpans(scopeSpan.Spans, scopeSpan.Scope, serviceName, id)...)
 			}
 		}
 		jaegerModel.Matched = len(jaegerModel.Spans)

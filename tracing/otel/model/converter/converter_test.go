@@ -2,6 +2,7 @@ package converter
 
 import (
 	"math"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -34,10 +35,52 @@ func TestConvertSpans(t *testing.T) {
 	id := getId()
 	serviceName := "kiali-traffic-generator.bookinfo"
 
-	jaegerSpans := ConvertSpans(spans, serviceName, id)
+	jaegerSpans := ConvertSpans(spans, otelModels.InstrumentationScope{}, serviceName, id)
 	assert.Equal(jaegerModels.SpanID(id), jaegerSpans[0].SpanID)
 	assert.Equal(serviceName, jaegerSpans[0].Process.ServiceName)
 	assert.Equal("reviews.bookinfo.svc.cluster.local:9080/*", jaegerSpans[0].OperationName)
+}
+
+// TestConvertSpansScope checks that the instrumentation scope reaches the span as tags. The
+// OpenTelemetry mapping to non-OTLP formats requires both of them, and Jaeger's own translation
+// of the same span reports them, so a Tempo span used to carry two tags fewer than a Jaeger one.
+func TestConvertSpansScope(t *testing.T) {
+	cases := map[string]struct {
+		scope        otelModels.InstrumentationScope
+		expectedTags []jaegerModels.KeyValue
+	}{
+		"a name and a version": {
+			scope: otelModels.InstrumentationScope{Name: "envoy", Version: "1.39.2-dev"},
+			expectedTags: []jaegerModels.KeyValue{
+				{Key: "otel.scope.name", Value: "envoy", Type: jaegerModels.StringType},
+				{Key: "otel.scope.version", Value: "1.39.2-dev", Type: jaegerModels.StringType},
+			},
+		},
+		"a name only": {
+			scope: otelModels.InstrumentationScope{Name: "io.opentelemetry.contrib.mongodb"},
+			expectedTags: []jaegerModels.KeyValue{
+				{Key: "otel.scope.name", Value: "io.opentelemetry.contrib.mongodb", Type: jaegerModels.StringType},
+			},
+		},
+		"an unknown scope": {
+			scope: otelModels.InstrumentationScope{},
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			converted := ConvertSpans(getSpans(), tc.scope, "reviews.bookinfo", getId())
+			assert.Len(t, converted, 1)
+
+			var scopeTags []jaegerModels.KeyValue
+			for _, tag := range converted[0].Tags {
+				if strings.HasPrefix(tag.Key, "otel.scope.") {
+					scopeTags = append(scopeTags, tag)
+				}
+			}
+			assert.Equal(t, tc.expectedTags, scopeTags)
+		})
+	}
 }
 
 // TestConvertSpansDuration checks the duration arithmetic. The subtraction is between two
@@ -96,7 +139,7 @@ func TestConvertSpansDuration(t *testing.T) {
 				EndTimeUnixNano:   tc.end,
 			}}
 
-			converted := ConvertSpans(spans, "reviews.bookinfo", getId())
+			converted := ConvertSpans(spans, otelModels.InstrumentationScope{}, "reviews.bookinfo", getId())
 			if tc.expectedDropped {
 				assert.Empty(t, converted)
 				return

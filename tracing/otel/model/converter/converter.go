@@ -25,8 +25,9 @@ func convertSpanId(id string) jaegerModels.SpanID {
 
 // ConvertSpans
 // https://opentelemetry.io/docs/specs/otel/trace/sdk_exporters/jaeger
-func ConvertSpans(spans []otelModels.Span, serviceName string, traceID string) []jaegerModels.Span {
+func ConvertSpans(spans []otelModels.Span, scope otelModels.InstrumentationScope, serviceName string, traceID string) []jaegerModels.Span {
 	var toRet []jaegerModels.Span
+	scopeTags := convertScope(scope)
 	for _, span := range spans {
 
 		startTime, err := strconv.ParseUint(string(span.StartTimeUnixNano), 10, 64)
@@ -53,7 +54,7 @@ func ConvertSpans(spans []otelModels.Span, serviceName string, traceID string) [
 			Flags:         0,
 			OperationName: span.Name,
 			References:    convertReferences(jaegerTraceId, parentSpanId),
-			Tags:          convertAttributes(span.Attributes, span.Status),
+			Tags:          append(convertAttributes(span.Attributes, span.Status), scopeTags...),
 			Logs:          []jaegerModels.Log{},
 			ProcessID:     "",
 			Process:       &jaegerModels.Process{Tags: []jaegerModels.KeyValue{}, ServiceName: serviceName},
@@ -212,6 +213,21 @@ func convertAttributes(attributes []otelModels.Attribute, status otelModels.Stat
 	if status.Code == otelModels.StatusCodeError {
 		tag := jaegerModels.KeyValue{Key: "error", Value: true, Type: "bool"}
 		tags = append(tags, tag)
+	}
+	return tags
+}
+
+// convertScope reports an OTLP instrumentation scope as the span tags the OpenTelemetry mapping
+// to non-OTLP formats defines for it. Jaeger's own translator reports the same two tags and
+// leaves out a name or a version that is empty, which the mapping says means unknown.
+// https://opentelemetry.io/docs/specs/otel/common/mapping-to-non-otlp/#instrumentationscope
+func convertScope(scope otelModels.InstrumentationScope) []jaegerModels.KeyValue {
+	var tags []jaegerModels.KeyValue
+	if scope.Name != "" {
+		tags = append(tags, jaegerModels.KeyValue{Key: "otel.scope.name", Value: scope.Name, Type: jaegerModels.StringType})
+	}
+	if scope.Version != "" {
+		tags = append(tags, jaegerModels.KeyValue{Key: "otel.scope.version", Value: scope.Version, Type: jaegerModels.StringType})
 	}
 	return tags
 }

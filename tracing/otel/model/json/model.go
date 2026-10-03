@@ -295,9 +295,16 @@ type Span struct {
 	ParentSpanId      string      `json:"parentSpanId"`
 }
 
+// InstrumentationScope names the library that produced a group of spans. An empty name means the
+// scope is unknown.
+type InstrumentationScope struct {
+	Name    string `json:"name"`
+	Version string `json:"version"`
+}
+
 type ScopeSpan struct {
-	Scope struct{} `json:"scope"`
-	Spans []Span   `json:"spans"`
+	Scope InstrumentationScope `json:"scope"`
+	Spans []Span               `json:"spans"`
 }
 
 type Resource struct {
