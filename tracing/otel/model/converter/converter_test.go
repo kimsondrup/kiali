@@ -45,6 +45,67 @@ func TestConvertSpans(t *testing.T) {
 	assert.Equal(jaegerModels.SpanID("1234567890abcdef"), jaegerSpans[0].References[0].SpanID)
 }
 
+// TestConvertSpansDuration checks the duration arithmetic. The subtraction is between two
+// unsigned nanosecond timestamps, so an end that is not after the start used to wrap round to
+// hundreds of years: without the guard, the absent end below reports 16655768095921845us, or
+// 528 years, and the end one microsecond early reports 18446744073709550us. Neither shape has
+// been seen in a Tempo response; both are values the proto permits.
+func TestConvertSpansDuration(t *testing.T) {
+	const start = uint64(1790975977787706000)
+
+	cases := map[string]struct {
+		start            uint64
+		end              uint64
+		expectedDuration uint64
+		expectedDropped  bool
+	}{
+		"an ordinary span": {
+			start:            start,
+			end:              1790975977789242000,
+			expectedDuration: 1536,
+		},
+		"an end equal to the start": {
+			start:            start,
+			end:              start,
+			expectedDuration: 0,
+		},
+		"an end before the start": {
+			start:            start,
+			end:              1790975977787705000,
+			expectedDuration: 0,
+		},
+		"an absent end": {
+			start:            start,
+			end:              0,
+			expectedDuration: 0,
+		},
+		"an absent start drops the span": {
+			start:           0,
+			end:             1790975977789242000,
+			expectedDropped: true,
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			spans := []*tracev1.Span{{
+				Name:              "reviews.bookinfo.svc.cluster.local:9080/*",
+				StartTimeUnixNano: tc.start,
+				EndTimeUnixNano:   tc.end,
+			}}
+
+			converted := ConvertSpans(spans, "reviews.bookinfo", getId())
+			if tc.expectedDropped {
+				assert.Empty(t, converted)
+				return
+			}
+
+			assert.Len(t, converted, 1)
+			assert.Equal(t, tc.expectedDuration, converted[0].Duration)
+		})
+	}
+}
+
 // TestConvertAttributes covers the tag a span attribute becomes, for every variant an OTLP
 // attribute value can be written as. The frontend reads a status code as a number and an error
 // flag for truth, so the tag type matters as much as the value does.

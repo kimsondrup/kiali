@@ -34,6 +34,13 @@ func convertSpanId(id []byte) jaegerModels.SpanID {
 func ConvertSpans(spans []*tracev1.Span, serviceName string, traceID string) []jaegerModels.Span {
 	var toRet []jaegerModels.Span
 	for _, span := range spans {
+		// a span with no start time is not placed anywhere on a timeline, and the OTLP proto
+		// requires one, so there is nothing to report it as
+		if span.GetStartTimeUnixNano() == 0 {
+			log.Errorf("Span has no start time. Skipping span")
+			continue
+		}
+
 		// the span carries its own trace id, and it is readable now, but the response answers a
 		// request for one trace and is keyed throughout by the id that was asked for
 		jaegerTraceId := ConvertId(traceID)
@@ -154,8 +161,19 @@ func ConvertSpanSet(span otel.Span, serviceName string, traceId string, rootName
 
 // getDuration returns the span's duration in microseconds, which Jaeger reports it in.
 func getDuration(span *tracev1.Span) uint64 {
+	start, end := span.GetStartTimeUnixNano(), span.GetEndTimeUnixNano()
+	// The subtraction is unsigned, and the OTLP proto only says that the end time is expected to
+	// be at or after the start time. An end before the start, an absent end among it, wraps the
+	// result round to several hundred years. Jaeger sanitizes the same case by moving the end up
+	// to the start and warning on the span; a zero duration says the same thing and keeps the
+	// span, which is better than dropping it - a span with a bad end time still carries its
+	// name, its service and its tags.
+	if end < start {
+		log.Warningf("Span end time %d is before its start time %d, reporting a zero duration", end, start)
+		return 0
+	}
 	// nano to micro
-	return (span.GetEndTimeUnixNano() - span.GetStartTimeUnixNano()) / 1000
+	return (end - start) / 1000
 }
 
 func convertReferences(traceId jaegerModels.TraceID, parentSpanId jaegerModels.SpanID) []jaegerModels.Reference {
