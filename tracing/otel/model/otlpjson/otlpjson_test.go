@@ -1,6 +1,7 @@
 package otlpjson
 
 import (
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"os"
@@ -222,4 +223,74 @@ func TestStatusBridge(t *testing.T) {
 			assert.Equal(t, tc.want, status.Code)
 		})
 	}
+}
+
+// TestUnmarshalHexIDs covers the one place the OTLP/JSON encoding departs from the protobuf
+// JSON mapping. Both forms have to be read, and the hex one is the dangerous one: hex text is
+// valid base64, so protojson reads it without reporting anything.
+func TestUnmarshalHexIDs(t *testing.T) {
+	const (
+		traceID      = "887a6ab0bc0f8966281b801f5a8398b6"
+		spanID       = "b2f7af65d533fede"
+		parentSpanID = "1234567890abcdef"
+	)
+
+	cases := map[string]struct {
+		ids string
+	}{
+		"hex, as the OTLP/JSON encoding requires": {
+			ids: `"traceId":"` + traceID + `","spanId":"` + spanID + `","parentSpanId":"` + parentSpanID + `"`,
+		},
+		"hex in upper case, which the encoding calls case-insensitive": {
+			ids: `"traceId":"887A6AB0BC0F8966281B801F5A8398B6","spanId":"B2F7AF65D533FEDE","parentSpanId":"1234567890ABCDEF"`,
+		},
+		"base64, as the protobuf JSON mapping defines it and Tempo writes it": {
+			ids: `"traceId":"iHpqsLwPiWYoG4AfWoOYtg==","spanId":"svevZdUz/t4=","parentSpanId":"EjRWeJCrze8="`,
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			body := `{"resourceSpans":[{"scopeSpans":[{"spans":[{` + tc.ids +
+				`,"links":[{"traceId":"` + traceID + `","spanId":"` + spanID + `"}]}]}]}]}`
+			data, err := UnmarshalTracesData([]byte(body))
+			require.NoError(t, err)
+
+			span := data.GetResourceSpans()[0].GetScopeSpans()[0].GetSpans()[0]
+			assert.Equal(t, traceID, hex.EncodeToString(span.GetTraceId()))
+			assert.Equal(t, spanID, hex.EncodeToString(span.GetSpanId()))
+			assert.Equal(t, parentSpanID, hex.EncodeToString(span.GetParentSpanId()))
+			assert.Equal(t, traceID, hex.EncodeToString(span.GetLinks()[0].GetTraceId()))
+			assert.Equal(t, spanID, hex.EncodeToString(span.GetLinks()[0].GetSpanId()))
+		})
+	}
+}
+
+// TestDecodeHexID covers the lengths the repair is allowed to touch, since the length is the
+// whole of what tells the two forms apart.
+func TestDecodeHexID(t *testing.T) {
+	// the 24 bytes protojson reads a 32 character hex trace id as
+	misread, err := base64.RawStdEncoding.DecodeString("887a6ab0bc0f8966281b801f5a8398b6")
+	require.NoError(t, err)
+	require.Len(t, misread, 24)
+	assert.Equal(t, "887a6ab0bc0f8966281b801f5a8398b6", hex.EncodeToString(decodeHexID(misread, traceIDSize)))
+
+	// an id of the size the proto gives it is already what it should be, whatever it holds
+	id := []byte("0123456789abcdef")
+	assert.Equal(t, id, decodeHexID(id, traceIDSize))
+	assert.Nil(t, decodeHexID(nil, traceIDSize))
+
+	// 24 bytes whose base64 text is not hex throughout are left alone. A base64 alphabet holds
+	// every hex digit, so the text has to be read rather than assumed.
+	notHex, err := base64.RawStdEncoding.DecodeString("887a6ab0bc0f8966281b801f5a8398bZ")
+	require.NoError(t, err)
+	assert.Equal(t, notHex, decodeHexID(notHex, traceIDSize))
+
+	// a hex id written shorter than its length is not recognised, which is the limit of reading
+	// the length: Tempo's search API drops the leading zeros of a trace id, and an id written
+	// that way inside an OTLP body would stay as protojson read it
+	short, err := base64.RawStdEncoding.DecodeString("ee9204f76db57d0aa38482c1243cea1")
+	require.NoError(t, err)
+	require.Len(t, short, 23)
+	assert.Equal(t, short, decodeHexID(short, traceIDSize))
 }

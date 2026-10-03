@@ -11,6 +11,8 @@ package otlpjson
 
 import (
 	"bytes"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"maps"
@@ -34,6 +36,12 @@ const (
 
 // maxWrappers is how many objects the span list is allowed to be nested inside.
 const maxWrappers = 1
+
+// The sizes the OTLP proto fixes the two ids at.
+const (
+	traceIDSize = 16
+	spanIDSize  = 8
+)
 
 // unmarshalOptions drops a field the proto does not have rather than failing on it. Nothing
 // measured needs that: strict decoding reads every captured Tempo and Jaeger response here. It
@@ -70,7 +78,65 @@ func UnmarshalTracesData(body []byte) (*tracev1.TracesData, error) {
 	if err := unmarshalOptions.Unmarshal(wrapped, data); err != nil {
 		return nil, fmt.Errorf("[OTLP JSON] reading the spans of a trace response: %w", err)
 	}
+	normalizeIDs(data)
 	return data, nil
+}
+
+// normalizeIDs repairs the ids of a response that wrote them the way the OTLP/JSON encoding
+// says to. That encoding is the protobuf JSON mapping with one divergence, and it names it:
+// "The traceId and spanId byte arrays are represented as case-insensitive hex-encoded strings;
+// they are not base64-encoded as is defined in the standard Protobuf JSON Mapping."
+// https://opentelemetry.io/docs/specs/otlp/#json-protobuf-encoding
+//
+// protojson implements the mapping, so it reads such an id as base64 - and hex text is itself
+// valid base64, so it does that without reporting anything: a 32 character trace id arrives as
+// 24 bytes of nothing. Nothing Kiali queries today writes an id that way, Tempo writes base64
+// on every JSON trace endpoint it has, so this is the encoding's own rule being honoured rather
+// than a backend being worked around.
+func normalizeIDs(data *tracev1.TracesData) {
+	for _, resourceSpans := range data.GetResourceSpans() {
+		for _, scopeSpans := range resourceSpans.GetScopeSpans() {
+			for _, span := range scopeSpans.GetSpans() {
+				span.TraceId = decodeHexID(span.GetTraceId(), traceIDSize)
+				span.SpanId = decodeHexID(span.GetSpanId(), spanIDSize)
+				span.ParentSpanId = decodeHexID(span.GetParentSpanId(), spanIDSize)
+				for _, link := range span.GetLinks() {
+					link.TraceId = decodeHexID(link.GetTraceId(), traceIDSize)
+					link.SpanId = decodeHexID(link.GetSpanId(), spanIDSize)
+				}
+			}
+		}
+	}
+}
+
+// decodeHexID returns the id an OTLP/JSON hex string was meant to be, and the id it was given
+// for anything else.
+//
+// The test is the length, and for an id written at the length the encoding gives it the length
+// decides exactly, not by guessing. Base64 of an id is padded to a whole number of groups, so
+// base64 of a 16 or an 8 byte id decodes to 16 or 8 bytes; only text that is not base64 of an id
+// can decode to the 24 and 12 bytes that 32 and 16 characters of unpadded base64 yield. Those
+// two lengths are whole base64 groups, so encoding them again reproduces the text the backend
+// wrote, character for character, and the id is read back out of it only if that text is hex
+// throughout - which has to be checked rather than assumed, because a base64 alphabet holds
+// every hex digit.
+//
+// What that leaves out is a hex id written shorter than its length, which Tempo's search API
+// does: it reports a trace id with its leading zeros dropped. Such an id is not recognised here
+// and is left as protojson read it. It does not reach a response - a search result is not OTLP
+// and does not come through here, and the trace id of a trace detail is the one the request
+// asked for - but a backend that dropped a leading zero from an id inside an OTLP body would go
+// unrepaired.
+func decodeHexID(id []byte, size int) []byte {
+	if len(id) != size*3/2 {
+		return id
+	}
+
+	decoded := make([]byte, size)
+	if _, err := hex.Decode(decoded, []byte(base64.RawStdEncoding.EncodeToString(id))); err != nil {
+		return id
+	}
+	return decoded
 }
 
 // resourceSpans returns the list of ResourceSpans in a trace response, as it arrived. A nil
