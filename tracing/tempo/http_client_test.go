@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/kiali/kiali/models"
 	"github.com/kiali/kiali/tracing/jaeger/model/json"
@@ -180,6 +181,70 @@ func TestHasErrors(t *testing.T) {
 	}
 }
 
+// TestGetTraceBatches checks what comes out of a trace response whose batches and scopes are not
+// the one-of-each shape of the recorded fixture. An empty trace is serialised as {} and used to
+// index past the end of the batch list; a resource with more than one instrumentation scope lost
+// every group of spans but the first.
+func TestGetTraceBatches(t *testing.T) {
+	const span = `{"spanId":"%s","name":"%s","kind":2,"startTimeUnixNano":"1790975977787706000","endTimeUnixNano":"1790975977789242000",` +
+		`"attributes":[{"key":"http.response.status_code","value":{"intValue":"503"}}]}`
+
+	cases := map[string]struct {
+		body          string
+		expectedSpans int
+		expectedTags  []json.KeyValue
+	}{
+		"an empty trace": {
+			body: `{}`,
+		},
+		"a trace with no batches": {
+			body: `{"batches":[]}`,
+		},
+		"a batch with no scopes": {
+			body: `{"batches":[{"resource":{"attributes":[]}}]}`,
+		},
+		"a batch with two scopes": {
+			body: fmt.Sprintf(`{"batches":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"%s"}}]},"scopeSpans":[
+				{"scope":{"name":"io.opentelemetry.http"},"spans":[`+span+`]},
+				{"scope":{"name":"io.opentelemetry.jdbc"},"spans":[`+span+`,`+span+`]}
+			]}]}`, serviceName, "aa", "http-handler", "bb", "select", "cc", "insert"),
+			expectedSpans: 3,
+			expectedTags: []json.KeyValue{
+				{Key: "http.response.status_code", Value: int64(503), Type: json.Int64Type},
+				{Key: "span.kind", Value: "server", Type: json.StringType},
+			},
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			httpClient := http.Client{Transport: RoundTripFunc(func(req *http.Request) *http.Response {
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(strings.NewReader(tc.body)),
+				}
+			})}
+
+			tempoClient, err := NewOtelClient(context.TODO())
+			assert.Nil(t, err)
+
+			traceID := fmt.Sprintf("%032x", len(name))
+			response, err := tempoClient.GetTraceDetailHTTP(context.Background(), httpClient, getBaseUrl(), traceID)
+			assert.Nil(t, err)
+			assert.NotNil(t, response)
+			assert.Equal(t, json.TraceID(traceID), response.Data.TraceID)
+			require.Len(t, response.Data.Spans, tc.expectedSpans)
+			assert.Equal(t, tc.expectedSpans, response.Data.Matched)
+
+			for _, tag := range tc.expectedTags {
+				assert.Contains(t, response.Data.Spans[0].Tags, tag)
+			}
+			if tc.expectedSpans > 0 {
+				assert.Equal(t, serviceName, response.Data.Spans[0].Process.ServiceName)
+			}
+		})
+	}
+}
 func TestErrorResponse(t *testing.T) {
 	baseUrl := getBaseUrl()
 
