@@ -318,11 +318,13 @@ func TestConvertScope(t *testing.T) {
 		scope *commonv1.InstrumentationScope
 		want  []jaegerModels.KeyValue
 	}{
+		// measured on every waypoint span of a live Istio 1.39 mesh, read back from both Tempo
+		// and Jaeger: the version Envoy reports is its whole build string, not a bare number
 		"a name and a version, as Envoy exports them": {
-			scope: &commonv1.InstrumentationScope{Name: "envoy", Version: "1.39.2-dev"},
+			scope: &commonv1.InstrumentationScope{Name: "envoy", Version: "3bb16354647d089b9a79020c9fc86cbbc5fcf84b/1.39.2-dev/Clean/RELEASE/BoringSSL"},
 			want: []jaegerModels.KeyValue{
 				{Key: "otel.scope.name", Value: "envoy", Type: jaegerModels.StringType},
-				{Key: "otel.scope.version", Value: "1.39.2-dev", Type: jaegerModels.StringType},
+				{Key: "otel.scope.version", Value: "3bb16354647d089b9a79020c9fc86cbbc5fcf84b/1.39.2-dev/Clean/RELEASE/BoringSSL", Type: jaegerModels.StringType},
 			},
 		},
 		"a name alone": {
@@ -331,9 +333,12 @@ func TestConvertScope(t *testing.T) {
 				{Key: "otel.scope.name", Value: "agentgateway", Type: jaegerModels.StringType},
 			},
 		},
-		// an empty name means the scope is unknown, which is nothing to report
-		"an empty scope, which is what Istio's own spans carry": {scope: &commonv1.InstrumentationScope{}},
-		"no scope at all": {scope: nil},
+		// a scope with neither field set, which is the shape the 2023 Tempo capture in
+		// tracing/tracingtest/responseTrace.json carries on all six of its resources. There is
+		// nothing to report it as. Istio's own spans are not this shape: Envoy fills both
+		// fields in, as the case above does.
+		"a scope with neither field set": {scope: &commonv1.InstrumentationScope{}},
+		"no scope at all":                {scope: nil},
 	}
 
 	for name, tc := range cases {

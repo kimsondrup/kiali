@@ -14,9 +14,11 @@ import (
 )
 
 const (
-	// a real Tempo 3.1.0 /api/traces/{id} response, in Tempo's own "batches" envelope
+	// a real Tempo /api/traces/{id} response, in Tempo's own "batches" envelope. Its spans
+	// start on 2023-12-05, so it predates the Tempo running today; ../../../tracingtest/README.adoc
+	// gives every fixture's provenance and the command to capture it again.
 	responseTrace = "../../../tracingtest/responseTrace.json"
-	// a real Tempo 3.1.0 /api/search response, in Tempo's own search shape
+	// a real Tempo 3.1.0 /api/search response to Kiali's own TraceQL, in Tempo's search shape
 	responseTypedSearch = "../../../tracingtest/responseTypedSearch.json"
 )
 
@@ -144,6 +146,9 @@ func TestUnmarshalAnyValueVariants(t *testing.T) {
 
 // TestAttributesBridge reads the attributes of a span matched by Tempo's search API, which
 // arrive inside Tempo's own shape and so go through encoding/json rather than protojson.
+//
+// The two typed keys are .component and .response_flags, because those are keys Kiali's own
+// select list names: an attribute only reaches this path if prepareTraceQL asked for it.
 func TestAttributesBridge(t *testing.T) {
 	body, err := os.ReadFile(responseTypedSearch)
 	require.NoError(t, err)
@@ -163,9 +168,9 @@ func TestAttributesBridge(t *testing.T) {
 	for _, attribute := range response.Traces[0].SpanSet.Spans[0].Attributes {
 		values[attribute.GetKey()] = attribute.GetValue()
 	}
-	assert.Equal(t, int64(8080), values["net.host.port"].GetIntValue())
-	assert.Equal(t, int64(200), values["http.status_code"].GetIntValue())
-	assert.Equal(t, "orders-api.api-orders", values["service.name"].GetStringValue())
+	assert.Equal(t, int64(7), values["component"].GetIntValue())
+	assert.True(t, values["response_flags"].GetBoolValue())
+	assert.Equal(t, "typeprobe.devex", values["service.name"].GetStringValue())
 }
 
 // TestAttributesBridgeTolerance covers what the bridge does with a list it cannot read in full.

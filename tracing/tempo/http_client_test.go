@@ -23,10 +23,15 @@ const (
 	responseAmbientFile = "../tracingtest/responseAmbient.json"
 	responseTrace       = "../tracingtest/responseTrace.json"
 	responseTypedSearch = "../tracingtest/responseTypedSearch.json"
+	responseTypedErrors = "../tracingtest/responseTypedErrors.json"
 	responseTypedTrace  = "../tracingtest/responseTypedTrace.json"
-	tracingUrl          = "http://tracing.tempo"
-	serviceName         = "productpage.bookinfo"
-	ambientServiceName  = "waypoint.bookinfo"
+
+	// the trace id responseTypedTrace.json carries, which is the one the trace it was captured
+	// from really had
+	typedTraceID       = "60bad1536be1cd2f5b39bf02883c9656"
+	tracingUrl         = "http://tracing.tempo"
+	serviceName        = "productpage.bookinfo"
+	ambientServiceName = "waypoint.bookinfo"
 )
 
 type RoundTripFunc func(req *http.Request) *http.Response
@@ -155,6 +160,10 @@ func TestGetTrace(t *testing.T) {
 // TestGetTraceTypedAttributes reads a captured trace whose attributes are not all strings. Each
 // one used to arrive with its key and an empty value, because the model declared an attribute
 // value as a single stringValue field, so every other variant decoded to "" with no error.
+//
+// No span an Istio proxy exports can show this: Envoy stringifies every attribute before
+// exporting it. The fixture is a trace through an agentgateway and an nginx OpenTelemetry
+// module instead; ../tracingtest/README.adoc says where it came from.
 func TestGetTraceTypedAttributes(t *testing.T) {
 	baseUrl := getBaseUrl()
 
@@ -171,10 +180,10 @@ func TestGetTraceTypedAttributes(t *testing.T) {
 	tempoClient, err := NewOtelClient(context.TODO())
 	assert.Nil(t, err)
 
-	response, err := tempoClient.GetTraceDetailHTTP(context.Background(), httpClient, baseUrl, "cafe9bc0903e18f6b914752f8ee577a5")
+	response, err := tempoClient.GetTraceDetailHTTP(context.Background(), httpClient, baseUrl, typedTraceID)
 	assert.Nil(t, err)
 	assert.Nil(t, response.Errors)
-	assert.Equal(t, 12, len(response.Data.Spans))
+	assert.Equal(t, 4, len(response.Data.Spans))
 
 	tags := map[string]json.KeyValue{}
 	for _, span := range response.Data.Spans {
@@ -191,6 +200,8 @@ func TestGetTraceTypedAttributes(t *testing.T) {
 	assert.Equal(t, json.Int64Type, tags["net.host.port"].Type)
 	assert.Equal(t, int64(8080), tags["net.host.port"].Value)
 	assert.Equal(t, json.Int64Type, tags["grpc.status"].Type)
+	// a zero that is an integer, not the empty string the old model made of it
+	assert.Equal(t, int64(0), tags["grpc.status"].Value)
 	// an array is reported as JSON, which is what Jaeger's own OTLP translation does with one
 	assert.Equal(t, json.StringType, tags["@jaeger@warnings"].Type)
 	assert.Contains(t, tags["@jaeger@warnings"].Value, "clock skew adjustment disabled")
@@ -215,30 +226,41 @@ func TestGetTraceScopeTags(t *testing.T) {
 	tempoClient, err := NewOtelClient(context.TODO())
 	assert.Nil(t, err)
 
-	response, err := tempoClient.GetTraceDetailHTTP(context.Background(), httpClient, baseUrl, "cafe9bc0903e18f6b914752f8ee577a5")
+	response, err := tempoClient.GetTraceDetailHTTP(context.Background(), httpClient, baseUrl, typedTraceID)
 	assert.Nil(t, err)
 
 	scopes := map[string]string{}
 	for _, span := range response.Data.Spans {
 		name, version := "", ""
+		reported := false
 		for _, tag := range span.Tags {
 			switch tag.Key {
 			case "otel.scope.name":
 				name = tag.Value.(string)
 			case "otel.scope.version":
 				version = tag.Value.(string)
+				reported = true
 			}
 		}
 		assert.NotEmpty(t, name)
+		// agentgateway sets a scope name and no version, and the version tag is left out
+		// rather than reported empty - convertScope's own choice, as its doc comment says,
+		// since the OpenTelemetry mapping to non-OTLP formats prescribes nothing about an
+		// empty field. Asserted on the tag's presence, because an absent tag and one whose
+		// value is "" read the same out of the map below.
+		assert.Equal(t, name == "nginx", reported)
 		scopes[name] = version
 	}
 
-	// a version that is empty means unknown, which the mapping says to leave out
 	assert.Equal(t, map[string]string{"agentgateway": "", "nginx": "1.31.6"}, scopes)
 }
 
-// TestGetTracesTypedAttributes reads the same attributes on the search path, where they arrive
+// TestGetTracesTypedAttributes reads typed attributes on the search path, where they arrive
 // inside Tempo's own response shape rather than as OTLP.
+//
+// The keys are .component and .response_flags, not http.status_code: an attribute reaches this
+// path only if prepareTraceQL's select list named it, and those two are in that list. Captured
+// from a live Tempo 3.1.0 answering Kiali's own TraceQL.
 func TestGetTracesTypedAttributes(t *testing.T) {
 	baseUrl := getBaseUrl()
 
@@ -255,19 +277,69 @@ func TestGetTracesTypedAttributes(t *testing.T) {
 	tempoClient, err := NewOtelClient(context.TODO())
 	assert.Nil(t, err)
 
-	response, err := tempoClient.GetAppTracesHTTP(context.Background(), httpClient, baseUrl, "orders-api.api-orders", models.TracingQuery{})
+	response, err := tempoClient.GetAppTracesHTTP(context.Background(), httpClient, baseUrl, "typeprobe.devex", models.TracingQuery{})
 	assert.Nil(t, err)
 	assert.Equal(t, 1, len(response.Data))
-	assert.Equal(t, 10, len(response.Data[0].Spans))
+	assert.Equal(t, 2, len(response.Data[0].Spans))
 
 	tags := map[string]json.KeyValue{}
 	for _, tag := range response.Data[0].Spans[0].Tags {
 		tags[tag.Key] = tag
 	}
-	assert.Equal(t, json.Int64Type, tags["http.status_code"].Type)
-	assert.Equal(t, int64(200), tags["http.status_code"].Value)
-	assert.Equal(t, json.Int64Type, tags["net.host.port"].Type)
-	assert.Equal(t, int64(8080), tags["net.host.port"].Value)
+	assert.Equal(t, json.Int64Type, tags["component"].Type)
+	assert.Equal(t, int64(7), tags["component"].Value)
+	assert.Equal(t, json.BoolType, tags["response_flags"].Type)
+	assert.Equal(t, true, tags["response_flags"].Value)
+}
+
+// TestGetTracesErrorsFixture reads a live Tempo 3.1.0 answer to Kiali's own Errors only query,
+// which is the Errors only path end to end rather than a hand-written body.
+//
+// The trace holds two spans: one that failed and one that did not. The failed one is kept
+// because its "status" attribute - the TraceQL status intrinsic prepareTraceQL selects - came
+// back as "error", and it reaches the caller carrying Kiali's boolean error tag.
+//
+// Note which type http.status_code has here: a string. It has to be, and that is a limit of the
+// filter rather than of this fixture. Kiali builds the condition .http.status_code != "200"
+// (prepareTraceQL via printOperator, which quotes any operand of Go type string), and TraceQL
+// will not compare a quoted string against an int-typed attribute. Measured against the same
+// live Tempo: a span whose http.status_code is {"intValue":"503"} is returned by the plain query
+// and by .http.status_code != 200 unquoted, and is NOT returned by the query Kiali sends. So no
+// Errors only response Kiali can receive carries an int-typed http.status_code. A typed
+// attribute does reach the search path, through .component and .response_flags, which is what
+// TestGetTracesTypedAttributes covers.
+func TestGetTracesErrorsFixture(t *testing.T) {
+	baseUrl := getBaseUrl()
+
+	byteValue, err := os.ReadFile(responseTypedErrors)
+	assert.Nil(t, err)
+
+	httpClient := http.Client{Transport: RoundTripFunc(func(req *http.Request) *http.Response {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(string(byteValue))),
+		}
+	})}
+
+	tempoClient, err := NewOtelClient(context.TODO())
+	assert.Nil(t, err)
+
+	failed, err := tempoClient.GetAppTracesHTTP(context.Background(), httpClient, baseUrl, "errorprobe.devex",
+		models.TracingQuery{Tags: map[string]string{"error": "true"}})
+	assert.Nil(t, err)
+	require.Equal(t, 1, len(failed.Data))
+	require.Equal(t, 2, len(failed.Data[0].Spans))
+
+	tags := map[string]json.KeyValue{}
+	for _, tag := range failed.Data[0].Spans[0].Tags {
+		tags[tag.Key] = tag
+	}
+	assert.Equal(t, json.KeyValue{Key: "error", Value: true, Type: json.BoolType}, tags["error"])
+	assert.Equal(t, json.StringType, tags["http.status_code"].Type)
+	assert.Equal(t, "503", tags["http.status_code"].Value)
+	// the span that did not fail keeps the attribute as the plain string Tempo sent
+	assert.Contains(t, failed.Data[0].Spans[1].Tags,
+		json.KeyValue{Key: "status", Value: "unset", Type: json.StringType})
 }
 
 // TestGetTraceEmpty covers the body Tempo answers with for a trace that holds no spans, which

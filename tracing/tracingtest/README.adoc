@@ -1,0 +1,196 @@
+=== tracingtest fixtures
+
+`mock.go` mocks Kiali's tracing client interfaces. The JSON files beside it are captured
+backend responses, used by the tests in `tracing/tempo` and `tracing/otel/model/otlpjson`.
+
+Each one is recorded below with where it came from and the command that would capture it
+again, because a fixture nobody can refresh is a liability.
+
+==== How to capture one
+
+Tempo answers both of the endpoints Kiali's HTTP client uses on its query port, 3200:
+
+[source,shell]
+----
+TEMPO=http://tempo.istio-system.svc.cluster.local:3200
+curl -s "$TEMPO/api/traces/<trace id>"                       # a trace detail
+curl -s "$TEMPO/api/search?start=<unix>&end=<unix>&spss=10&q=<traceql>"
+----
+
+Those are the search parameters Kiali sends, bar `limit`: `prepareTraceQL` adds one only when
+the caller asks for a limit, and Kiali's own HTTP handlers ask for 100
+(`handlers/queryparams/tracing.go`). It has no effect on the shape of a response.
+
+The search query has to be Kiali's own, or the response will not hold the attributes Kiali
+reads: an attribute reaches the search path only when `prepareTraceQL`'s select list names
+it. `GetTraceQLQuery` (`tracing/tempo/http_client.go`) returns exactly what Kiali sends, and
+it is reproduced by hand as:
+
+....
+{ .service.name = "<service>"  } && {  } | select(status, .service_name, .node_id,
+.component, .upstream_cluster, .http.method, .response_flags,
+.istio.destination_workload, .istio.destination_namespace,
+.istio.destination_instance_name, .istio.destination_canonical_service,
+.istio.source_workload, .istio.source_namespace, .istio.source_instance_name,
+.istio.source_canonical_service, resource.hostname, name)
+....
+
+with `&& .http.status_code != "200"` added inside the first `{ }` for the Errors only filter.
+
+The two synthetic documents further down were replayed end to end while this file was written:
+posting one to Tempo and running the query above over it reproduces its fixture span for span
+and attribute for attribute, typed values included - only the timestamps, Tempo's `metrics`
+block and the order the attributes arrive in differ.
+
+Two things to know before capturing. Tempo's default retention is short - two hours in the
+cluster these were taken from - so the `start` and `end` of a search have to cover a window
+that still holds the trace. And Tempo's search API strips the leading zeros from a trace id,
+so an id read out of a search response can be shorter than 32 characters; the fixtures here
+record that as captured.
+
+==== The fixtures
+
+`response.json`::
+A Tempo `/api/search` response, added by *Add Tempo tests (#6920)*. Its spans carry no `name`
+field, which matches the select list as it stood at that commit.
+
+`responseAmbient.json`::
+A Tempo `/api/search` response, added by *Ambient tracing (#8063)*. Matches the select list as
+it stood there, plus the `.istio.cluster_id` condition Kiali adds for a multicluster mesh. Its
+trace id is 31 characters, which is Tempo's stripped leading zero.
+
+`responseTrace.json`::
+A Tempo `/api/traces/{id}` response in Tempo's own `batches` envelope, added by *Add Tempo
+tests (#6920)*. Its spans start on 2023-12-05, so it predates the Tempo running today, and all
+six of its resources carry an instrumentation scope of `{}` - a shape a current Tempo does not
+send, and the only fixture here that covers it.
++
+[source,shell]
+----
+curl -s "$TEMPO/api/traces/3ba55609c3cde49649cd77d1f9dcd936"
+----
+
+`responseTypedTrace.json`::
+A Tempo 3.1.0 `/api/traces/{id}` response for trace `60bad1536be1cd2f5b39bf02883c9656`,
+captured from a local kind mesh. It exists because no span an Istio proxy exports can exercise
+a non-string attribute value: Envoy stringifies everything before exporting it. These spans
+come from an agentgateway and from an nginx OpenTelemetry module, which write `intValue` and
+`arrayValue`, and the two of them give the trace two instrumentation scopes.
++
+The nginx spans look like Envoy spans on purpose - the module is configured to stamp
+`component`, `node_id` and the `istio.*` attributes on them - so do not "correct" the
+`nginx`/`1.31.6` scope to `envoy`. Their `intValue` attributes are typed because Jaeger's
+translator types a numeric tag, not because the emitter wrote integers; the trace reached
+Tempo by an api_v3 replay out of Jaeger, which is also where the `@jaeger@warnings` attribute
+comes from.
++
+Two edits, both recorded here rather than hidden: the span timestamps were moved forward to
+get the trace inside the retention window of the Tempo it was replayed into, and the document
+was carved out of a larger capture that held this trace and two others merged under one
+synthetic id. What is left is one real trace, under the id it really had. It is genuinely
+partial: the nginx span's parent is not in the document, because the Envoy span above it was
+never captured.
++
+Refreshing this one takes more than a window. The agentgateway and nginx-OpenTelemetry stack
+that emitted it is not part of a stock Istio mesh, so it has to be running before there is
+anything to capture, and the command below answers 404 on the cluster the fixture came from -
+checked again while writing this, along with that cluster's Jaeger, which no longer lists the
+service either. Of the five fixtures here this is the one to leave alone unless that stack is
+up.
++
+[source,shell]
+----
+curl -s "$TEMPO/api/traces/60bad1536be1cd2f5b39bf02883c9656"
+----
+
+`responseTypedSearch.json`::
+A Tempo 3.1.0 `/api/search` response to Kiali's own TraceQL, for service `typeprobe.devex`.
+The typed attributes it carries are `.component` as `intValue` and `.response_flags` as
+`boolValue`, which are keys the select list names - that is what makes them reachable. It also
+shows the `status` attribute at two of its three values, `error` and `ok`.
++
+`typeprobe.devex` is a synthetic OTLP document posted to Tempo rather than mesh traffic, which
+is the only way to get a typed attribute onto a key Kiali selects. To capture it again, post
+the two spans below to Tempo's OTLP HTTP endpoint on port 4318 and then run Kiali's plain query
+over the service name. This is the whole document that produced the fixture: the resource
+carries `hostname` because the select list names `resource.hostname`, and the two spans are
+what the fixture's two spans are.
++
+[source,shell]
+----
+curl -s -X POST http://tempo.istio-system.svc.cluster.local:4318/v1/traces \
+  -H 'Content-Type: application/json' -d '{"resourceSpans":[{"resource":{"attributes":[
+    {"key":"service.name","value":{"stringValue":"typeprobe.devex"}},
+    {"key":"hostname","value":{"stringValue":"probe-host"}}]},
+  "scopeSpans":[{"scope":{"name":"typeprobe","version":"0.1.0"},"spans":[
+    {"traceId":"000f0f0f0f0f0f0f0f0f0f0f0f0f0f01","spanId":"00cccccccccccc01",
+     "name":"probe-typed","kind":2,
+     "startTimeUnixNano":"<now ns>","endTimeUnixNano":"<now ns + 4000000>",
+     "status":{"code":2,"message":"probe says why"},
+     "attributes":[{"key":"component","value":{"intValue":"7"}},
+       {"key":"response_flags","value":{"boolValue":true}},
+       {"key":"http.status_code","value":{"intValue":"503"}},
+       {"key":"http.method","value":{"stringValue":"GET"}},
+       {"key":"istio.destination_workload","value":{"stringValue":"details-v1"}},
+       {"key":"istio.cluster_id","value":{"stringValue":"cluster1"}}]},
+    {"traceId":"000f0f0f0f0f0f0f0f0f0f0f0f0f0f01","spanId":"00cccccccccccc02",
+     "parentSpanId":"00cccccccccccc01","name":"probe-ok","kind":2,
+     "startTimeUnixNano":"<now ns>","endTimeUnixNano":"<now ns + 4000000>",
+     "status":{"code":1},
+     "attributes":[{"key":"component","value":{"stringValue":"proxy"}},
+       {"key":"response_flags","value":{"stringValue":"-"}},
+       {"key":"http.method","value":{"stringValue":"GET"}},
+       {"key":"istio.cluster_id","value":{"stringValue":"cluster1"}}]}]}]}]}'
+----
++
+Two of the attributes posted are not in the fixture, which is the select list doing its work:
+`http.status_code` is not selected by the plain query, and `.istio.cluster_id` is a condition
+Kiali only adds for a multicluster mesh. The trace id comes back 29 characters long, because
+Tempo's search API strips its leading zeros.
+
+`responseTypedErrors.json`::
+A Tempo 3.1.0 `/api/search` response to Kiali's *Errors only* TraceQL, for service
+`errorprobe.devex`: two spans, one that failed and one that did not.
++
+Captured from a synthetic document too, for a reason worth stating. Envoy never
+sets an OTLP span status - measured `{}` on every waypoint span of this mesh - so Tempo's
+`status` intrinsic is `unset` for Envoy spans and Kiali's Errors only search over real mesh
+data in Tempo returns nothing. A fixture for that path therefore has to come from an emitter
+that does set a status.
++
+The failed span's `http.status_code` is a *string*, and it has to be: Kiali builds the
+condition `.http.status_code != "200"`, and TraceQL will not compare a quoted string against
+an int-typed attribute. Measured on the same Tempo, a span whose `http.status_code` is
+`{"intValue":"503"}` is returned by the plain query and by `!= 200` unquoted, and is not
+returned by the query Kiali sends.
++
+[source,shell]
+----
+curl -s -X POST http://tempo.istio-system.svc.cluster.local:4318/v1/traces \
+  -H 'Content-Type: application/json' -d '{"resourceSpans":[{"resource":{"attributes":[
+    {"key":"service.name","value":{"stringValue":"errorprobe.devex"}},
+    {"key":"hostname","value":{"stringValue":"probe-host"}}]},
+  "scopeSpans":[{"scope":{"name":"errorprobe","version":"0.1.0"},"spans":[
+    {"traceId":"000e0e0e0e0e0e0e0e0e0e0e0e0e0e01","spanId":"00dddddddddddd01",
+     "name":"probe-failed","kind":2,
+     "startTimeUnixNano":"<now ns>","endTimeUnixNano":"<now ns + 4000000>",
+     "status":{"code":2,"message":"upstream connect error"},
+     "attributes":[{"key":"component","value":{"stringValue":"proxy"}},
+       {"key":"http.method","value":{"stringValue":"GET"}},
+       {"key":"http.status_code","value":{"stringValue":"503"}},
+       {"key":"response_flags","value":{"stringValue":"UF"}},
+       {"key":"istio.cluster_id","value":{"stringValue":"cluster1"}}]},
+    {"traceId":"000e0e0e0e0e0e0e0e0e0e0e0e0e0e01","spanId":"00dddddddddddd02",
+     "parentSpanId":"00dddddddddddd01","name":"probe-ok","kind":2,
+     "startTimeUnixNano":"<now ns>","endTimeUnixNano":"<now ns + 4000000>",
+     "status":{},
+     "attributes":[{"key":"component","value":{"stringValue":"proxy"}},
+       {"key":"http.method","value":{"stringValue":"GET"}},
+       {"key":"http.status_code","value":{"stringValue":"200"}},
+       {"key":"response_flags","value":{"stringValue":"-"}},
+       {"key":"istio.cluster_id","value":{"stringValue":"cluster1"}}]}]}]}]}'
+----
++
+Then run the Errors only query, the plain one with `&& .http.status_code != "200"` inside the
+first `{ }`. The second span is in the fixture because `spss` returns the other spans of a
+matched trace; it is the one that did not fail, and its status intrinsic is `unset`.

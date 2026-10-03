@@ -206,10 +206,14 @@ func convertReferences(traceId jaegerModels.TraceID, parentSpanId jaegerModels.S
 }
 
 // convertScope reports an OTLP instrumentation scope as span tags. The mapping to non-OTLP
-// formats requires the scope's fields to be reported as key-value pairs and recommends these two
-// names for them, alongside otel.library.name and otel.library.version, which it keeps only "for
-// backward compatibility reasons" and marks deprecated. Only the current pair is emitted: the
-// aliases would double every scope tag to serve a reader that predates them.
+// formats requires the scope's fields to be reported as key-value pairs and names otel.scope.name
+// and otel.scope.version for them, both at requirement level Recommended.
+//
+// It also says the deprecated otel.library.name and otel.library.version "MUST also be reported
+// with exact same values for backward compatibility reasons", and those two rows are marked
+// Recommended as well. Only the current pair is emitted, so that MUST is deliberately declined:
+// the aliases would double every scope tag on every span to serve a reader that predates them,
+// and nothing Kiali ships reads either name.
 // https://opentelemetry.io/docs/specs/otel/common/mapping-to-non-otlp/#instrumentationscope
 //
 // Skipping an empty name or version is this function's own choice, not a rule from that document
