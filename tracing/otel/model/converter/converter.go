@@ -167,6 +167,14 @@ func getDuration(end string, start string) (uint64, error) {
 		log.Errorf("Error converting start date: %s", err.Error())
 		return 0, err
 	}
+	// The subtraction is unsigned, and the OTLP proto only says that the end time is expected to
+	// be at or after the start time. An end before the start wraps the result round to several
+	// hundred years. Jaeger sanitizes the same case by moving the end up to the start and warning
+	// on the span; a zero duration says the same thing and keeps the span.
+	if endInt < startInt {
+		log.Warningf("End date %s is before start date %s, reporting a zero duration", end, start)
+		return 0, nil
+	}
 	// nano to micro
 	return (endInt - startInt) / 1000, nil
 }

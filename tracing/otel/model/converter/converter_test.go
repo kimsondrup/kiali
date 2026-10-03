@@ -40,6 +40,74 @@ func TestConvertSpans(t *testing.T) {
 	assert.Equal("reviews.bookinfo.svc.cluster.local:9080/*", jaegerSpans[0].OperationName)
 }
 
+// TestConvertSpansDuration checks the duration arithmetic. The subtraction is between two
+// unsigned nanosecond timestamps, so an end that is not after the start used to wrap round to
+// hundreds of years: without the guard, the end of zero below reports 16655768095921845us, or
+// 528 years, and the end one microsecond early reports 18446744073709550us. Neither shape has
+// been seen in a Tempo response; both are values the proto permits.
+func TestConvertSpansDuration(t *testing.T) {
+	const start = "1790975977787706000"
+
+	cases := map[string]struct {
+		start            otelModels.Nanos
+		end              otelModels.Nanos
+		expectedDuration uint64
+		expectedDropped  bool
+	}{
+		"an ordinary span": {
+			start:            start,
+			end:              "1790975977789242000",
+			expectedDuration: 1536,
+		},
+		"an end equal to the start": {
+			start:            start,
+			end:              start,
+			expectedDuration: 0,
+		},
+		"an end before the start": {
+			start:            start,
+			end:              "1790975977787705000",
+			expectedDuration: 0,
+		},
+		"an end of zero": {
+			start:            start,
+			end:              "0",
+			expectedDuration: 0,
+		},
+		"an end that is not a number drops the span": {
+			start:           start,
+			end:             "",
+			expectedDropped: true,
+		},
+		"a start that is not a number drops the span": {
+			start:           "",
+			end:             "1790975977789242000",
+			expectedDropped: true,
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			spans := []otelModels.Span{{
+				TraceID:           getId(),
+				SpanID:            getId(),
+				Name:              "reviews.bookinfo.svc.cluster.local:9080/*",
+				StartTimeUnixNano: tc.start,
+				EndTimeUnixNano:   tc.end,
+			}}
+
+			converted := ConvertSpans(spans, "reviews.bookinfo", getId())
+			if tc.expectedDropped {
+				assert.Empty(t, converted)
+				return
+			}
+
+			assert.Len(t, converted, 1)
+			assert.Equal(t, tc.expectedDuration, converted[0].Duration)
+		})
+	}
+}
+
 // TestConvertAttributes checks that an OTLP attribute keeps its type when it becomes a Jaeger
 // tag. Jaeger reports typed tags for the same attributes, and the UI reads some of them as
 // numbers and booleans rather than as text.
