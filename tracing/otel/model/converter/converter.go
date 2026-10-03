@@ -133,6 +133,10 @@ func convertOtelSpan(span *tempopb.Span, serviceName, traceID, rootTrace string)
 	return modelSpan
 }
 
+// ConvertSpanSet reports a span matched by Tempo's search API as the Jaeger-shaped span Kiali's
+// own API returns. It answers with no span rather than with a span at the Unix epoch when the
+// start time is missing or unreadable, which is the rule ConvertSpans applies on the trace
+// detail path: a span with no start time is not placed anywhere on a timeline.
 func ConvertSpanSet(span otel.Span, serviceName string, traceId string, rootName string) []jaegerModels.Span {
 	var toRet []jaegerModels.Span
 
@@ -140,6 +144,11 @@ func ConvertSpanSet(span otel.Span, serviceName string, traceId string, rootName
 	if err != nil {
 		log.Errorf("Could not read the start time %q of span %s in trace %s: %s",
 			span.StartTimeUnixNano, span.SpanID, traceId, err)
+	}
+	if startTime == 0 {
+		log.Errorf("Span %s of trace %s on service [%s] has no start time. Skipping span",
+			span.SpanID, traceId, serviceName)
+		return nil
 	}
 	duration, err := strconv.ParseUint(span.DurationNanos, 10, 64)
 	if err != nil {

@@ -14,6 +14,7 @@ import (
 	tracev1 "go.opentelemetry.io/proto/otlp/trace/v1"
 
 	jaegerModels "github.com/kiali/kiali/tracing/jaeger/model/json"
+	otel "github.com/kiali/kiali/tracing/otel/model"
 	v1 "github.com/kiali/kiali/tracing/tempo/tempopb/common/v1"
 )
 
@@ -422,6 +423,28 @@ func TestConvertModelAttributesStatus(t *testing.T) {
 	unset := []*v1.KeyValue{{Key: "status", Value: &v1.AnyValue{Value: &v1.AnyValue_StringValue{StringValue: "unset"}}}}
 	assert.Equal(t, []jaegerModels.KeyValue{{Key: "status", Value: "unset", Type: jaegerModels.StringType}},
 		convertModelAttributes(unset))
+}
+
+// TestConvertSpanSetNoStartTime covers a span that Tempo's search API answers with and that
+// carries no start time. ConvertSpans drops such a span on the trace detail path; this is the
+// same rule on the path that feeds the traces list and the Metrics-tab span overlay.
+//
+// It is not a shape the proto merely permits. Measured against a live Tempo 3.1.0: a span whose
+// start time was written as zero comes back from /api/search with no startTimeUnixNano key and
+// no durationNanos key at all, inside a trace an ordinary recent-window search finds. Without
+// the rule, that span was reported at 1970-01-01, which the Metrics overlay plots as a point
+// three decades left of every other.
+func TestConvertSpanSetNoStartTime(t *testing.T) {
+	// exactly what the live Tempo answered with for the two spans
+	normal := otel.Span{SpanID: "0b0b0b0b0b0b0b01", Name: "normal", StartTimeUnixNano: "1791066189000000000", DurationNanos: "4000000"}
+	zeroStart := otel.Span{SpanID: "0b0b0b0b0b0b0b02", Name: "zero-start"}
+
+	assert.Empty(t, ConvertSpanSet(zeroStart, "mixprobe.devex", "b0b0b0b0b0b0b0b0b0b0b0b0b0b01", "normal"))
+
+	kept := ConvertSpanSet(normal, "mixprobe.devex", "b0b0b0b0b0b0b0b0b0b0b0b0b0b01", "normal")
+	require.Len(t, kept, 1)
+	assert.Equal(t, uint64(1791066189000000), kept[0].StartTime)
+	assert.Equal(t, uint64(4000), kept[0].Duration)
 }
 
 // TestConvertScope checks the two tags the OpenTelemetry mapping to non-OTLP formats asks for,
