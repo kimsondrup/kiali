@@ -78,7 +78,14 @@ func ConvertSpans(spans []*tracev1.Span, scope *commonv1.InstrumentationScope, s
 			atb_val = "client"
 		case tracev1.Span_SPAN_KIND_SERVER:
 			atb_val = "server"
+		case tracev1.Span_SPAN_KIND_PRODUCER:
+			atb_val = "producer"
+		case tracev1.Span_SPAN_KIND_CONSUMER:
+			atb_val = "consumer"
+		case tracev1.Span_SPAN_KIND_INTERNAL:
+			atb_val = "internal"
 		}
+		// SPAN_KIND_UNSPECIFIED is left without a tag, as Jaeger's own translation leaves it
 		if atb_val != "" {
 			atb := jaegerModels.KeyValue{Key: "span.kind", Value: atb_val, Type: jaegerModels.StringType}
 			jaegerSpan.Tags = append(jaegerSpan.Tags, atb)

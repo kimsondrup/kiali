@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	commonv1 "go.opentelemetry.io/proto/otlp/common/v1"
 	tracev1 "go.opentelemetry.io/proto/otlp/trace/v1"
 
@@ -45,6 +46,46 @@ func TestConvertSpans(t *testing.T) {
 	assert.Equal(uint64(646), jaegerSpans[0].Duration)
 	assert.Equal(jaegerModels.TraceID(id), jaegerSpans[0].References[0].TraceID)
 	assert.Equal(jaegerModels.SpanID("1234567890abcdef"), jaegerSpans[0].References[0].SpanID)
+}
+
+// TestConvertSpanKind checks the span.kind tag, which is how Kiali's frontend tells the two
+// ends of a call apart. Five of the six OTLP kinds get a tag; the one Jaeger's own OTLP
+// translation leaves untagged is UNSPECIFIED, measured by reading all five back out of a live
+// Jaeger 2.20.0. Istio never sends the three that were missing - 221 real waypoint spans were
+// SERVER - but anything instrumented with an OpenTelemetry SDK does.
+func TestConvertSpanKind(t *testing.T) {
+	cases := map[tracev1.Span_SpanKind]string{
+		tracev1.Span_SPAN_KIND_CLIENT:      "client",
+		tracev1.Span_SPAN_KIND_SERVER:      "server",
+		tracev1.Span_SPAN_KIND_PRODUCER:    "producer",
+		tracev1.Span_SPAN_KIND_CONSUMER:    "consumer",
+		tracev1.Span_SPAN_KIND_INTERNAL:    "internal",
+		tracev1.Span_SPAN_KIND_UNSPECIFIED: "",
+	}
+
+	for kind, want := range cases {
+		t.Run(kind.String(), func(t *testing.T) {
+			spans := getSpans()
+			spans[0].Kind = kind
+
+			converted := ConvertSpans(spans, nil, "reviews.bookinfo", getId())
+			require.Len(t, converted, 1)
+
+			var kinds []jaegerModels.KeyValue
+			for _, tag := range converted[0].Tags {
+				if tag.Key == "span.kind" {
+					kinds = append(kinds, tag)
+				}
+			}
+			if want == "" {
+				assert.Empty(t, kinds)
+				return
+			}
+			assert.Equal(t, []jaegerModels.KeyValue{
+				{Key: "span.kind", Value: want, Type: jaegerModels.StringType},
+			}, kinds)
+		})
+	}
 }
 
 // TestConvertSpansDuration checks the duration arithmetic. The subtraction is between two
