@@ -155,6 +155,17 @@ func ConvertSpanSet(span otel.Span, serviceName string, traceId string, rootName
 		log.Errorf("Could not read the duration %q of span %s in trace %s: %s",
 			span.DurationNanos, span.SpanID, traceId, err)
 	}
+	// Tempo computes this duration itself, as an unsigned subtraction, so a span whose end
+	// precedes its start arrives already wrapped round: an end 4ms before the start is sent as
+	// 18446744073705551616, which is 584 years. Any nanosecond duration at or above 2^63 is such
+	// a wrap and not a duration, because the longest honest one is bounded by the time since the
+	// epoch, which is under 2^61. getDuration reports a zero duration for the same case on the
+	// trace detail path, for the same reason: the span still carries its name and its tags.
+	if duration >= 1<<63 {
+		log.Warningf("Span %s of trace %s reports a duration of %dns, which is a wrapped negative; reporting a zero duration",
+			span.SpanID, traceId, duration)
+		duration = 0
+	}
 
 	jaegerTraceId := ConvertId(traceId)
 	operationName := rootName

@@ -447,6 +447,32 @@ func TestConvertSpanSetNoStartTime(t *testing.T) {
 	assert.Equal(t, uint64(4000), kept[0].Duration)
 }
 
+// TestConvertSpanSetWrappedDuration covers a span whose end precedes its start on the search
+// path. Tempo does the subtraction itself and sends the wrapped result, so Kiali never sees the
+// two timestamps: the duration simply arrives as a number just under 2^64.
+//
+// Measured against a live Tempo 3.1.0, which stored and served the inverted span without
+// complaint: a span whose end was 4ms before its start came back with
+// durationNanos 18446744073705551616, which ConvertSpanSet reported as 18446744073705551us, or
+// 584 years. One such span flattens the duration axis of the traces list for every other trace
+// in it.
+func TestConvertSpanSetWrappedDuration(t *testing.T) {
+	// exactly what the live Tempo answered with
+	span := otel.Span{
+		SpanID:            "0b0b0b0b0b0b0b04",
+		Name:              "end-before-start",
+		StartTimeUnixNano: "1791066189004000000",
+		DurationNanos:     "18446744073705551616",
+	}
+
+	converted := ConvertSpanSet(span, "mixprobe.devex", "b0b0b0b0b0b0b0b0b0b0b0b0b0b01", "normal")
+	require.Len(t, converted, 1)
+	assert.Equal(t, uint64(0), converted[0].Duration)
+	// the span is kept, with its start time and its name intact
+	assert.Equal(t, uint64(1791066189004000), converted[0].StartTime)
+	assert.Equal(t, "end-before-start", converted[0].OperationName)
+}
+
 // TestConvertScope checks the two tags the OpenTelemetry mapping to non-OTLP formats asks for,
 // which Jaeger's own translation of the same span reports as well.
 func TestConvertScope(t *testing.T) {
