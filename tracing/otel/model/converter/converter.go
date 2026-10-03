@@ -38,7 +38,8 @@ func ConvertSpans(spans []*tracev1.Span, scope *commonv1.InstrumentationScope, s
 		// a span with no start time is not placed anywhere on a timeline, and the OTLP proto
 		// requires one, so there is nothing to report it as
 		if span.GetStartTimeUnixNano() == 0 {
-			log.Errorf("Span has no start time. Skipping span")
+			log.Errorf("Span %s of trace %s on service [%s] has no start time. Skipping span",
+				convertSpanId(span.GetSpanId()), traceID, serviceName)
 			continue
 		}
 
@@ -124,11 +125,13 @@ func ConvertSpanSet(span otel.Span, serviceName string, traceId string, rootName
 
 	startTime, err := strconv.ParseUint(span.StartTimeUnixNano, 10, 64)
 	if err != nil {
-		log.Errorf("Error converting start time.")
+		log.Errorf("Could not read the start time %q of span %s in trace %s: %s",
+			span.StartTimeUnixNano, span.SpanID, traceId, err)
 	}
 	duration, err := strconv.ParseUint(span.DurationNanos, 10, 64)
 	if err != nil {
-		log.Errorf("Error converting duration.")
+		log.Errorf("Could not read the duration %q of span %s in trace %s: %s",
+			span.DurationNanos, span.SpanID, traceId, err)
 	}
 
 	jaegerTraceId := ConvertId(traceId)
@@ -170,7 +173,8 @@ func getDuration(span *tracev1.Span) uint64 {
 	// span, which is better than dropping it - a span with a bad end time still carries its
 	// name, its service and its tags.
 	if end < start {
-		log.Warningf("Span end time %d is before its start time %d, reporting a zero duration", end, start)
+		log.Warningf("Span %s end time %d is before its start time %d, reporting a zero duration",
+			convertSpanId(span.GetSpanId()), end, start)
 		return 0
 	}
 	// nano to micro
@@ -254,7 +258,7 @@ func attributeValue(value any) (any, jaegerModels.ValueType) {
 		// an array or a map, which Jaeger's own OTLP translation renders as JSON as well
 		text, err := json.Marshal(plain)
 		if err != nil {
-			log.Errorf("Error rendering attribute value: %s", err.Error())
+			log.Errorf("Could not render an attribute value of type %T: %s", plain, err)
 			return "", jaegerModels.StringType
 		}
 		return string(text), jaegerModels.StringType
