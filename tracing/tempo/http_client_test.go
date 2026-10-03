@@ -449,29 +449,24 @@ func TestGetTracesErrorsOnly(t *testing.T) {
 		json.KeyValue{Key: "error", Value: true, Type: json.BoolType})
 }
 
-// TestUnreadableBody covers a 200 body that cannot be read. A trace detail used to be answered
-// with a trace holding no spans whatever the body was, which reads as a backend that has nothing
-// to show rather than as a response Kiali could not parse.
+// TestUnreadableBody covers a 200 body that cannot be read, on both endpoints. Either one used
+// to answer with a trace or a traces list holding nothing whatever the body was, which reads as
+// a backend that has nothing to show rather than as a response Kiali could not parse.
 func TestUnreadableBody(t *testing.T) {
 	baseUrl := getBaseUrl()
 
-	cases := map[string]struct {
-		body string
-		// the search endpoint answers in a shape of Kiali's own, so a body that is JSON but not
-		// that shape is read as a search that matched nothing; only the trace endpoint can tell
-		// an envelope it does not know from a trace with no spans
-		searchFails bool
-	}{
-		"an envelope with no span list in it": {body: `{"data":[{"spans":[]}]}`},
-		"not JSON at all":                     {body: `No traces found`, searchFails: true},
+	cases := map[string]string{
+		"an envelope with no span list in it": `{"data":[{"spans":[]}]}`,
+		"a Tempo error report":                `{"status":"error","error":"queue doesn't have room"}`,
+		"not JSON at all":                     `No traces found`,
 	}
 
-	for name, tc := range cases {
+	for name, body := range cases {
 		t.Run(name, func(t *testing.T) {
 			httpClient := http.Client{Transport: RoundTripFunc(func(req *http.Request) *http.Response {
 				return &http.Response{
 					StatusCode: http.StatusOK,
-					Body:       io.NopCloser(strings.NewReader(tc.body)),
+					Body:       io.NopCloser(strings.NewReader(body)),
 				}
 			})}
 
@@ -482,11 +477,69 @@ func TestUnreadableBody(t *testing.T) {
 			assert.Error(t, err)
 
 			_, err = tempoClient.GetAppTracesHTTP(context.Background(), httpClient, baseUrl, serviceName, models.TracingQuery{})
-			if tc.searchFails {
-				assert.Error(t, err)
-			} else {
-				assert.NoError(t, err)
-			}
+			assert.Error(t, err)
+		})
+	}
+}
+
+// TestUnreadableSearchBody covers two more bodies the search endpoint has to reject, which it
+// could not tell from a search that matched nothing before. Neither is wrong on the trace
+// endpoint - {} is what Tempo answers for a trace that holds no spans, and an OTLP envelope
+// with an empty list is what an OTLP endpoint answers - so each is only wrong where it is sent.
+func TestUnreadableSearchBody(t *testing.T) {
+	baseUrl := getBaseUrl()
+
+	cases := map[string]string{
+		"an empty object":                 `{}`,
+		"an OTLP body sent to the search": `{"resourceSpans":[]}`,
+	}
+
+	for name, body := range cases {
+		t.Run(name, func(t *testing.T) {
+			httpClient := http.Client{Transport: RoundTripFunc(func(req *http.Request) *http.Response {
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(strings.NewReader(body)),
+				}
+			})}
+
+			tempoClient, err := NewOtelClient(context.TODO())
+			assert.Nil(t, err)
+
+			_, err = tempoClient.GetAppTracesHTTP(context.Background(), httpClient, baseUrl, serviceName, models.TracingQuery{})
+			assert.Error(t, err)
+		})
+	}
+}
+
+// TestEmptySearch covers the bodies a Tempo search really answers with when it matched nothing,
+// which must stay a search with no results and not become an error. Both were captured from a
+// live Tempo 3.1.0: the first from a window that holds no data at all, the second from a query
+// for a service that does not exist.
+func TestEmptySearch(t *testing.T) {
+	baseUrl := getBaseUrl()
+
+	cases := map[string]string{
+		"a window that holds nothing": `{"traces":[],"metrics":{}}`,
+		"a service that matched nothing": `{"traces":[],"metrics":{"inspectedBytes":"83764","totalBlocks":1,` +
+			`"completedJobs":4,"totalJobs":4,"totalBlockBytes":"343369"}}`,
+	}
+
+	for name, body := range cases {
+		t.Run(name, func(t *testing.T) {
+			httpClient := http.Client{Transport: RoundTripFunc(func(req *http.Request) *http.Response {
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(strings.NewReader(body)),
+				}
+			})}
+
+			tempoClient, err := NewOtelClient(context.TODO())
+			assert.Nil(t, err)
+
+			response, err := tempoClient.GetAppTracesHTTP(context.Background(), httpClient, baseUrl, serviceName, models.TracingQuery{})
+			require.NoError(t, err)
+			assert.Empty(t, response.Data)
 		})
 	}
 }

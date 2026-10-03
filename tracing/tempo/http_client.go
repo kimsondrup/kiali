@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/url"
 	"path"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -228,10 +230,48 @@ func (oc *OtelHTTPClient) transformTrace(ctx context.Context, traces *otelModel.
 	return &response, nil
 }
 
+// The keys a Tempo search answer carries. Measured on every 200 a live Tempo 3.1.0 gave: a
+// window that holds nothing answers {"traces":[],"metrics":{}}, and a service that matches
+// nothing answers the same with its metrics filled in. So a body with neither key is a shape
+// this client cannot read, whatever else it holds.
+//
+// The version is named because this is the one rule here that another Tempo could break.
+// tempopb's README puts this client's support floor at Tempo 2.3.0, and the marshaller behind
+// Tempo's trace API does leave an empty field out of a response - which is why the trace
+// endpoint has to accept {}. No Tempo has been seen doing that on the search endpoint; one
+// that did would turn an empty window into an error here, and the answer would be to accept an
+// object with no keys at all, as the trace endpoint does.
+const (
+	keyTraces  = "traces"
+	keyMetrics = "metrics"
+)
+
 func unmarshal(ctx context.Context, r []byte, u *url.URL) (*otelModel.Traces, error) {
+	zl := getLoggerFromContextHTTPTempo(ctx)
+
+	// The envelope is checked before the model is read, because the model cannot tell a search
+	// that matched nothing from a body of the wrong shape: a JSON object with no "traces" key
+	// decodes into it cleanly and yields zero traces and no error, which reaches the user as
+	// "No traces found" with nothing logged and nothing wrong reported. Strict decoding is not
+	// the answer - a genuine Tempo trace carries spanSets, serviceStats and its own per-trace
+	// metrics, none of which the model declares, so it would reject real responses. The cost is
+	// reading the body twice, which is what keeps the check independent of the tolerance that
+	// made it necessary.
+	var envelope map[string]json.RawMessage
+	if errEnvelope := json.Unmarshal(r, &envelope); errEnvelope != nil {
+		zl.Error().Msgf("[HTTP Tempo] Error unmarshalling Tempo API response: %s [URL: %v]", errEnvelope, u)
+		return nil, errEnvelope
+	}
+	if envelope[keyTraces] == nil && envelope[keyMetrics] == nil {
+		errShape := fmt.Errorf("[HTTP Tempo] not a Tempo search response: it has none of %q and %q, only %q",
+			keyTraces, keyMetrics, slices.Sorted(maps.Keys(envelope)))
+		zl.Error().Msgf("%s [URL: %v]", errShape, u)
+		return nil, errShape
+	}
+
 	var response otelModel.Traces
 	if errMarshal := json.Unmarshal(r, &response); errMarshal != nil {
-		getLoggerFromContextHTTPTempo(ctx).Error().Msgf("[HTTP Tempo] Error unmarshalling Tempo API response: %s [URL: %v]", errMarshal, u)
+		zl.Error().Msgf("[HTTP Tempo] Error unmarshalling Tempo API response: %s [URL: %v]", errMarshal, u)
 		return nil, errMarshal
 	}
 
