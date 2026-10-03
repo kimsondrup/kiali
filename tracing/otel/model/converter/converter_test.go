@@ -1,11 +1,13 @@
 package converter
 
 import (
+	"bytes"
 	"encoding/hex"
 	"math"
 	"strings"
 	"testing"
 
+	zlog "github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	commonv1 "go.opentelemetry.io/proto/otlp/common/v1"
@@ -305,6 +307,43 @@ func TestConvertStatus(t *testing.T) {
 			assert.Equal(t, tc.want, convertStatus(tc.status))
 		})
 	}
+}
+
+// TestConvertAttributesUnreadVariant covers an attribute whose value uses an AnyValue variant
+// this build cannot read. Today that is string_value_strindex, which the proto reserves for the
+// Profiling signal, and which Tempo 3.1.0 accepts and hands back unchanged - so the tag arrives
+// with an empty value, which is the defect this branch exists to remove, re-created on new
+// input. The proto's own comment on the field tells a receiver of any other signal to log about
+// it, so a warning is the fix rather than a repair.
+//
+// The warning is per span, not per attribute: one line naming every key.
+func TestConvertAttributesUnreadVariant(t *testing.T) {
+	strindex := &commonv1.AnyValue{Value: &commonv1.AnyValue_StringValueStrindex{StringValueStrindex: 3}}
+
+	attributes := []*commonv1.KeyValue{
+		{Key: "probe.strindex", Value: strindex},
+		{Key: "http.method", Value: &commonv1.AnyValue{Value: &commonv1.AnyValue_StringValue{StringValue: "GET"}}},
+		{Key: "probe.other", Value: strindex},
+		// an unset value is legal OTLP and must not be warned about
+		{Key: "probe.unset", Value: &commonv1.AnyValue{}},
+	}
+
+	buf := &bytes.Buffer{}
+	restore := zlog.Logger
+	zlog.Logger = zlog.Logger.Output(buf)
+	defer func() { zlog.Logger = restore }()
+
+	tags := convertAttributes(attributes)
+
+	require.Len(t, tags, 4)
+	assert.Equal(t, "", tags[0].Value)
+	assert.Equal(t, "GET", tags[1].Value)
+
+	logged := buf.String()
+	assert.Equal(t, 1, strings.Count(logged, "Could not read the value of span attribute"), logged)
+	assert.Contains(t, logged, "probe.strindex, probe.other")
+	assert.NotContains(t, logged, "probe.unset")
+	assert.NotContains(t, logged, "http.method")
 }
 
 // TestConvertModelAttributes covers the same attributes on the Tempo gRPC path, which reads

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"math"
 	"strconv"
+	"strings"
 
 	commonv1 "go.opentelemetry.io/proto/otlp/common/v1"
 	tracev1 "go.opentelemetry.io/proto/otlp/trace/v1"
@@ -283,17 +284,45 @@ func convertStatus(status *tracev1.Status) []jaegerModels.KeyValue {
 
 func convertAttributes(attributes []*commonv1.KeyValue) []jaegerModels.KeyValue {
 	var tags []jaegerModels.KeyValue
+	var unread []string
 	for _, atb := range attributes {
 		if atb.GetKey() == "status" && atb.GetValue().GetStringValue() == "error" {
 			tag := jaegerModels.KeyValue{Key: "error", Value: true, Type: jaegerModels.BoolType}
 			tags = append(tags, tag)
 		} else {
-			value, valueType := attributeValue(plainValue(atb.GetValue()))
+			plain := plainValue(atb.GetValue())
+			if plain == nil && atb.GetValue().GetValue() != nil {
+				unread = append(unread, atb.GetKey())
+			}
+			value, valueType := attributeValue(plain)
 			tag := jaegerModels.KeyValue{Key: atb.GetKey(), Value: value, Type: valueType}
 			tags = append(tags, tag)
 		}
 	}
+	warnUnreadVariants(unread)
 	return tags
+}
+
+// warnUnreadVariants reports the attributes whose value was written as an AnyValue variant this
+// build cannot read, which arrive as a tag with an empty value. The only such variant today is
+// string_value_strindex, and the OTLP proto's own generated comment on it instructs a receiver
+// of any signal but Profiling to "Log an error or warning indicating an unexpected field
+// intended for the Profiling signal and process the data as if this value were absent or
+// empty", which is what happens here. Tempo 3.1.0 accepts and returns one.
+//
+// A value with no variant set at all is not reported: an unset value is legal OTLP and says
+// what a missing tag says.
+//
+// One line per span, naming every key, rather than one line per attribute. A trace detail
+// carries a few hundred attribute values and a search answer a few thousand, so a line each
+// would bury the one span that has the problem; Kiali has no per-site rate limiter to fall
+// back on.
+func warnUnreadVariants(keys []string) {
+	if len(keys) == 0 {
+		return
+	}
+	log.Warningf("Could not read the value of span attribute(s) %s: written as an OTLP value variant this build does not know. Reporting them as empty",
+		strings.Join(keys, ", "))
 }
 
 // attributeValue maps an OTLP attribute value, as plainValue returns it, onto a Jaeger tag value
@@ -319,8 +348,9 @@ func attributeValue(value any) (any, jaegerModels.ValueType) {
 	case []byte:
 		return plain, jaegerModels.BinaryType
 	case nil:
-		// no variant set, or the one the proto reserves for profiling, which a receiver of any
-		// other signal is told to read as though the value were absent
+		// no variant set, or one this build cannot read - the proto's profiling variant, or a
+		// variant a later revision adds. Either is read as though the value were absent;
+		// warnUnreadVariants says which keys the second case applied to.
 		return "", jaegerModels.StringType
 	default:
 		// an array or a map, which Jaeger's own OTLP translation renders as JSON as well
@@ -383,6 +413,12 @@ func finiteOrText(value float64) any {
 // OTLP attributes through Tempo's own generated types. Only the extraction differs, because the
 // two generated models share no type; what a value becomes on the Jaeger side is one decision
 // for both.
+//
+// The unread-variant warning its twin carries has no place here. This model's AnyValue declares
+// seven variants and plainModelValue reads all seven, and no other package can add an eighth:
+// the oneof is an unexported interface with an unexported method, so only the generated code
+// implements it. string_value_strindex, the variant that warning exists for, is declared by the
+// OTLP proto Kiali builds against and not by this one.
 func convertModelAttributes(attributes []*v1.KeyValue) []jaegerModels.KeyValue {
 	var tags []jaegerModels.KeyValue
 	for _, atb := range attributes {
