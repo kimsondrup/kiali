@@ -262,16 +262,49 @@ func TestConvertAttributesError(t *testing.T) {
 }
 
 // TestConvertStatus covers the span-level status, which arrives on the trace detail path, where
-// the response really is OTLP. The mapping to non-OTLP formats says a status of UNSET MUST NOT
-// be reported at all.
+// the response really is OTLP. The three tags are what Jaeger 2.20.0 reports for the same span,
+// read back from its own /api/traces; the mapping to non-OTLP formats says a status of UNSET
+// MUST NOT be reported at all.
 func TestConvertStatus(t *testing.T) {
-	errorTag := jaegerModels.KeyValue{Key: "error", Value: true, Type: jaegerModels.BoolType}
+	cases := map[string]struct {
+		status *tracev1.Status
+		want   []jaegerModels.KeyValue
+	}{
+		"an error with a message": {
+			status: &tracev1.Status{Code: tracev1.Status_STATUS_CODE_ERROR, Message: "upstream connect error"},
+			want: []jaegerModels.KeyValue{
+				{Key: "error", Value: true, Type: jaegerModels.BoolType},
+				{Key: "otel.status_code", Value: "ERROR", Type: jaegerModels.StringType},
+				{Key: "otel.status_description", Value: "upstream connect error", Type: jaegerModels.StringType},
+			},
+		},
+		"an error with no message": {
+			status: &tracev1.Status{Code: tracev1.Status_STATUS_CODE_ERROR},
+			want: []jaegerModels.KeyValue{
+				{Key: "error", Value: true, Type: jaegerModels.BoolType},
+				{Key: "otel.status_code", Value: "ERROR", Type: jaegerModels.StringType},
+			},
+		},
+		// OK is a status a span set deliberately, so it is reported, but it is not a failure and
+		// gets no error tag
+		"a deliberate OK": {
+			status: &tracev1.Status{Code: tracev1.Status_STATUS_CODE_OK},
+			want: []jaegerModels.KeyValue{
+				{Key: "otel.status_code", Value: "OK", Type: jaegerModels.StringType},
+			},
+		},
+		"unset, which must not be reported": {status: &tracev1.Status{Code: tracev1.Status_STATUS_CODE_UNSET}},
+		// a message with no code is not a status the mapping names, and the code is what it keys
+		// the report on
+		"a message with no code": {status: &tracev1.Status{Message: "nothing to go on"}},
+		"no status at all":       {status: nil},
+	}
 
-	assert.Equal(t, []jaegerModels.KeyValue{errorTag},
-		convertStatus(&tracev1.Status{Code: tracev1.Status_STATUS_CODE_ERROR}))
-	assert.Nil(t, convertStatus(&tracev1.Status{Code: tracev1.Status_STATUS_CODE_OK}))
-	assert.Nil(t, convertStatus(&tracev1.Status{Code: tracev1.Status_STATUS_CODE_UNSET}))
-	assert.Nil(t, convertStatus(nil))
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			assert.Equal(t, tc.want, convertStatus(tc.status))
+		})
+	}
 }
 
 // TestConvertModelAttributes covers the same attributes on the Tempo gRPC path, which reads

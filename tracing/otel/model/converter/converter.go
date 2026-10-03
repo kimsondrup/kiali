@@ -239,19 +239,45 @@ func convertScope(scope *commonv1.InstrumentationScope) []jaegerModels.KeyValue 
 
 // convertStatus reports an OTLP span status as span tags. The mapping to non-OTLP formats
 // requires the status to be reported as key-value pairs on the span "unless the Status is UNSET.
-// In the latter case it MUST NOT be reported."
+// In the latter case it MUST NOT be reported." It names otel.status_code, whose value is "OK" or
+// "ERROR", and otel.status_description for the status message.
 // https://opentelemetry.io/docs/specs/otel/common/mapping-to-non-otlp/#span-status
+//
+// Kiali's error=true is not one of those two names and is not a substitute for them: it says
+// that a span failed and nothing about why. Jaeger's own translation of the same span emits all
+// three, so all three are emitted here.
 //
 // It is its own function rather than a parameter of convertAttributes because only one of that
 // function's two callers has a status to pass: Tempo's search API answers with the TraceQL
 // status intrinsic as an attribute, not with the span-level status the OTLP proto declares.
 func convertStatus(status *tracev1.Status) []jaegerModels.KeyValue {
 	var tags []jaegerModels.KeyValue
+
 	// Jaeger's own OTLP translation adds this boolean for an errored span, and Kiali's frontend
 	// reads it as the one signal that a span failed, so the Tempo path has to report it too.
 	if status.GetCode() == tracev1.Status_STATUS_CODE_ERROR {
 		tags = append(tags, jaegerModels.KeyValue{Key: "error", Value: true, Type: jaegerModels.BoolType})
 	}
+
+	// the mapping prescribes the name of the status code, not its number, and names only OK and
+	// ERROR; UNSET is the case it says not to report
+	statusCode := ""
+	switch status.GetCode() {
+	case tracev1.Status_STATUS_CODE_OK:
+		statusCode = "OK"
+	case tracev1.Status_STATUS_CODE_ERROR:
+		statusCode = "ERROR"
+	}
+	// an UNSET status is not reported at all, so its message is not reported either: the rule is
+	// about the status, not about one of its fields
+	if statusCode == "" {
+		return tags
+	}
+	tags = append(tags, jaegerModels.KeyValue{Key: "otel.status_code", Value: statusCode, Type: jaegerModels.StringType})
+	if message := status.GetMessage(); message != "" {
+		tags = append(tags, jaegerModels.KeyValue{Key: "otel.status_description", Value: message, Type: jaegerModels.StringType})
+	}
+
 	return tags
 }
 
