@@ -29,8 +29,13 @@ func convertSpanId(id []byte) jaegerModels.SpanID {
 	return jaegerModels.SpanID(hex.EncodeToString(id))
 }
 
-// ConvertSpans
-// https://opentelemetry.io/docs/specs/otel/trace/sdk_exporters/jaeger
+// ConvertSpans reports OTLP spans as the Jaeger-shaped spans Kiali's own API returns, which is
+// the model the frontend reads whichever backend the trace came from. The tag names for the
+// OpenTelemetry fields that have no Jaeger equivalent come from the OpenTelemetry mapping to
+// non-OTLP formats: https://opentelemetry.io/docs/specs/otel/common/mapping-to-non-otlp/
+//
+// A span with no start time is dropped rather than reported, so the caller gets fewer spans than
+// it had resources for. The id of the trace is taken from the argument and not from the span.
 func ConvertSpans(spans []*tracev1.Span, scope *commonv1.InstrumentationScope, serviceName string, traceID string) []jaegerModels.Span {
 	var toRet []jaegerModels.Span
 	scopeTags := convertScope(scope)
@@ -143,8 +148,10 @@ func ConvertSpanSet(span otel.Span, serviceName string, traceId string, rootName
 	jaegerSpan := jaegerModels.Span{
 		TraceID: jaegerTraceId,
 		// Tempo's search API reports the span id as hex text already
-		SpanID:    jaegerModels.SpanID(span.SpanID),
-		Duration:  duration / 1000, // Provided in ns, Jaeger uses ms
+		SpanID: jaegerModels.SpanID(span.SpanID),
+		// nano to micro, as getDuration does for the other path: Jaeger reports a duration in
+		// microseconds, and this comment said milliseconds for two years.
+		Duration:  duration / 1000,
 		StartTime: startTime / 1000,
 		// No more mapped data
 		Flags: 0,
@@ -198,10 +205,16 @@ func convertReferences(traceId jaegerModels.TraceID, parentSpanId jaegerModels.S
 	return references
 }
 
-// convertScope reports an OTLP instrumentation scope as the span tags the OpenTelemetry mapping
-// to non-OTLP formats defines for it. Jaeger's own translator reports the same two tags and
-// leaves out a name or a version that is empty, which the mapping says means unknown.
+// convertScope reports an OTLP instrumentation scope as span tags. The mapping to non-OTLP
+// formats requires the scope's fields to be reported as key-value pairs and recommends these two
+// names for them, alongside otel.library.name and otel.library.version, which it keeps only "for
+// backward compatibility reasons" and marks deprecated. Only the current pair is emitted: the
+// aliases would double every scope tag to serve a reader that predates them.
 // https://opentelemetry.io/docs/specs/otel/common/mapping-to-non-otlp/#instrumentationscope
+//
+// Skipping an empty name or version is this function's own choice, not a rule from that document
+// - it prescribes nothing about an empty field. A tag whose value is the empty string says
+// nothing a missing tag does not, and Jaeger's own translator omits them too.
 func convertScope(scope *commonv1.InstrumentationScope) []jaegerModels.KeyValue {
 	var tags []jaegerModels.KeyValue
 	if scope.GetName() != "" {
@@ -233,9 +246,14 @@ func convertAttributes(attributes []*commonv1.KeyValue, status tracev1.Status_St
 	return tags
 }
 
-// attributeValue maps an OTLP attribute value, as plainValue returns it, onto a Jaeger tag
-// value and the tag type that describes it. Jaeger's own API reports typed tags for the same
-// attributes, and the frontend reads some of them as numbers and booleans rather than as text.
+// attributeValue maps an OTLP attribute value, as plainValue returns it, onto a Jaeger tag value
+// and the tag type that describes it.
+//
+// The type is carried rather than stringified because the attribute arrives with it: OTLP states
+// which variant was written, Kiali's tag model has a field for it, and turning an int64 into
+// text here would discard something no later reader can recover. What a given consumer does with
+// the type is its own business - the point is not to lose it at the boundary, which is what the
+// model this replaced did for every value that was not a string.
 func attributeValue(value any) (any, jaegerModels.ValueType) {
 	switch plain := value.(type) {
 	case string:

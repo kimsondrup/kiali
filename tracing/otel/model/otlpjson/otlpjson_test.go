@@ -209,9 +209,12 @@ func TestStatusBridge(t *testing.T) {
 		"by name":   {body: `{"code":"STATUS_CODE_ERROR"}`, want: tracev1.Status_STATUS_CODE_ERROR},
 		"by number": {body: `{"code":2}`, want: tracev1.Status_STATUS_CODE_ERROR},
 		"absent":    {body: `{}`, want: tracev1.Status_STATUS_CODE_UNSET},
-		// Tempo writes the status of a span its search matched on, and writes null for a span it
-		// matched some other way. encoding/json hands null to the method, which must read it as
-		// the field being absent rather than fail the response it arrived in.
+		// Measured against Tempo 3.1.0: it does NOT write a span-level status at all. Asked for
+		// one with select(status), it answers with an attribute keyed "status" whose value is the
+		// TraceQL intrinsic as text, "unset" or "error", so this method is never reached on that
+		// path. The null case is kept because encoding/json hands null straight to the method
+		// wherever a backend does write one, and failing the whole response over it would be
+		// worse than reading it as absent.
 		"written as null":       {body: `null`, want: tracev1.Status_STATUS_CODE_UNSET},
 		"a code we cannot read": {body: `{"code":{"nested":true}}`, want: tracev1.Status_STATUS_CODE_UNSET},
 	}

@@ -3,10 +3,17 @@
 // at them: an attribute value keeps the variant it was written as, and an enum arrives whether
 // it was written as its name or as its number.
 //
-// Both encodings have to be read. The OTLP/JSON encoding is the protobuf JSON mapping with one
-// documented divergence, and protojson implements that mapping, so it reads a span attribute,
-// a span kind, a status code and a 64 bit timestamp in every form either encoding permits.
+// Both encodings have to be read, because the two backends Kiali can reach do not write the
+// same one. The OTLP/JSON encoding is the protobuf JSON mapping with TWO stated divergences:
+// the two ids are hex rather than base64, and "Values of enum fields MUST be encoded as integer
+// values ... the enum name strings MUST NOT be used".
 // https://opentelemetry.io/docs/specs/otlp/#json-protobuf-encoding
+//
+// Measured, those two divergences are what tells the backends apart. Tempo answers its trace
+// endpoints in the plain protobuf JSON mapping - base64 ids and "SPAN_KIND_SERVER" by name -
+// and so is not writing OTLP/JSON at all, while Jaeger's api_v3 writes hex ids and a kind of 2.
+// protojson implements the mapping, so it reads an attribute, a kind, a status code and a 64 bit
+// timestamp in every form either encoding permits, and the ids are the one thing left to repair.
 package otlpjson
 
 import (
@@ -43,11 +50,15 @@ const (
 	spanIDSize  = 8
 )
 
-// unmarshalOptions drops a field the proto does not have rather than failing on it. Nothing
-// measured needs that: strict decoding reads every captured Tempo and Jaeger response here. It
-// is a trace response's own field that a later OTLP revision, or a backend that answers ahead
-// of the proto Kiali builds against, would add - and such a field must not be able to blank
-// the traces list. The cost is that it is then dropped with nothing said about it.
+// unmarshalOptions drops a field the proto does not have rather than failing on it, which the
+// OTLP spec requires rather than merely permits: "OTLP/JSON receivers MUST ignore message fields
+// with unknown names and MUST unmarshal the message as if the unknown field was not present in
+// the payload." https://opentelemetry.io/docs/specs/otlp/#json-protobuf-encoding
+//
+// So strict decoding would be the wrong choice even though it reads the responses in this repo's
+// fixtures: a field added by a later OTLP revision, or by a backend answering ahead of the proto
+// Kiali builds against, must not be able to blank the traces list. The cost is that such a field
+// is dropped with nothing said about it.
 var unmarshalOptions = protojson.UnmarshalOptions{DiscardUnknown: true}
 
 // jsonNull is the literal encoding/json hands an UnmarshalJSON method for a field written as
@@ -83,10 +94,11 @@ func UnmarshalTracesData(body []byte) (*tracev1.TracesData, error) {
 }
 
 // normalizeIDs repairs the ids of a response that wrote them the way the OTLP/JSON encoding
-// says to. That encoding is the protobuf JSON mapping with one divergence, and it names it:
+// says to, which is the first of that encoding's two divergences from the protobuf JSON mapping:
 // "The traceId and spanId byte arrays are represented as case-insensitive hex-encoded strings;
 // they are not base64-encoded as is defined in the standard Protobuf JSON Mapping."
 // https://opentelemetry.io/docs/specs/otlp/#json-protobuf-encoding
+// The second divergence, integer-only enums, needs no repair: protojson accepts both forms.
 //
 // protojson implements the mapping, so it reads such an id as base64 - and hex text is itself
 // valid base64, so it does that without reporting anything: a 32 character trace id arrives as
