@@ -11,6 +11,7 @@ import (
 	tracev1 "go.opentelemetry.io/proto/otlp/trace/v1"
 
 	jaegerModels "github.com/kiali/kiali/tracing/jaeger/model/json"
+	v1 "github.com/kiali/kiali/tracing/tempo/tempopb/common/v1"
 )
 
 func TestConvertId(t *testing.T) {
@@ -198,6 +199,84 @@ func TestConvertAttributesError(t *testing.T) {
 
 	assert.Equal(t, []jaegerModels.KeyValue{errorTag}, convertAttributes(nil, tracev1.Status_STATUS_CODE_ERROR))
 	assert.Nil(t, convertAttributes(nil, tracev1.Status_STATUS_CODE_OK))
+}
+
+// TestConvertModelAttributes covers the same attributes on the Tempo gRPC path, which reads
+// them from Tempo's own generated OTLP types. They used to be read through GetStringValue
+// alone, with the tag type hard-coded to string, so a search run with use_grpc set reported
+// every typed attribute as empty where the HTTP path reported it correctly.
+func TestConvertModelAttributes(t *testing.T) {
+	cases := map[string]struct {
+		value     *v1.AnyValue
+		wantValue any
+		wantType  jaegerModels.ValueType
+	}{
+		"a string": {
+			value:     &v1.AnyValue{Value: &v1.AnyValue_StringValue{StringValue: "HTTP/1.1"}},
+			wantValue: "HTTP/1.1", wantType: jaegerModels.StringType,
+		},
+		"a bool": {
+			value:     &v1.AnyValue{Value: &v1.AnyValue_BoolValue{BoolValue: true}},
+			wantValue: true, wantType: jaegerModels.BoolType,
+		},
+		"an int": {
+			value:     &v1.AnyValue{Value: &v1.AnyValue_IntValue{IntValue: 503}},
+			wantValue: int64(503), wantType: jaegerModels.Int64Type,
+		},
+		"a double": {
+			value:     &v1.AnyValue{Value: &v1.AnyValue_DoubleValue{DoubleValue: 1.5}},
+			wantValue: 1.5, wantType: jaegerModels.Float64Type,
+		},
+		"bytes": {
+			value:     &v1.AnyValue{Value: &v1.AnyValue_BytesValue{BytesValue: []byte("hi")}},
+			wantValue: []byte("hi"), wantType: jaegerModels.BinaryType,
+		},
+		"an array": {
+			value: &v1.AnyValue{Value: &v1.AnyValue_ArrayValue{ArrayValue: &v1.ArrayValue{
+				Values: []*v1.AnyValue{
+					{Value: &v1.AnyValue_StringValue{StringValue: "a"}},
+					{Value: &v1.AnyValue_IntValue{IntValue: 2}},
+				},
+			}}},
+			wantValue: `["a",2]`, wantType: jaegerModels.StringType,
+		},
+		"a map": {
+			value: &v1.AnyValue{Value: &v1.AnyValue_KvlistValue{KvlistValue: &v1.KeyValueList{
+				Values: []*v1.KeyValue{
+					{Key: "k", Value: &v1.AnyValue{Value: &v1.AnyValue_StringValue{StringValue: "v"}}},
+				},
+			}}},
+			wantValue: `{"k":"v"}`, wantType: jaegerModels.StringType,
+		},
+		"no variant set": {
+			value:     &v1.AnyValue{},
+			wantValue: "", wantType: jaegerModels.StringType,
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			tags := convertModelAttributes([]*v1.KeyValue{{Key: "k", Value: tc.value}})
+
+			assert.Len(t, tags, 1)
+			assert.Equal(t, "k", tags[0].Key)
+			assert.Equal(t, tc.wantValue, tags[0].Value)
+			assert.Equal(t, tc.wantType, tags[0].Type)
+		})
+	}
+}
+
+// TestConvertModelAttributesStatus checks that the status attribute Tempo selects is read the
+// same way on both paths. An error becomes the error tag; anything else stays a tag of its own,
+// which the gRPC path used to drop.
+func TestConvertModelAttributesStatus(t *testing.T) {
+	failed := []*v1.KeyValue{{Key: "status", Value: &v1.AnyValue{Value: &v1.AnyValue_StringValue{StringValue: "error"}}}}
+	assert.Equal(t, []jaegerModels.KeyValue{{Key: "error", Value: true, Type: jaegerModels.BoolType}},
+		convertModelAttributes(failed))
+
+	unset := []*v1.KeyValue{{Key: "status", Value: &v1.AnyValue{Value: &v1.AnyValue_StringValue{StringValue: "unset"}}}}
+	assert.Equal(t, []jaegerModels.KeyValue{{Key: "status", Value: "unset", Type: jaegerModels.StringType}},
+		convertModelAttributes(unset))
 }
 
 // TestConvertScope checks the two tags the OpenTelemetry mapping to non-OTLP formats asks for,
