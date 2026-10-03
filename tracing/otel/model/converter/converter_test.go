@@ -121,7 +121,7 @@ func TestConvertAttributesError(t *testing.T) {
 			attributes: []otelModels.Attribute{{Key: "status", Value: otelModels.AnyValue{StringValue: util.AsPtr("error")}}},
 		},
 		"the span status code": {
-			status: otelModels.Status{Code: "STATUS_CODE_ERROR"},
+			status: otelModels.Status{Code: otelModels.StatusCodeError},
 		},
 	}
 
@@ -148,7 +148,7 @@ func getSpans() []otelModels.Span {
 		TraceID:           getId(),
 		SpanID:            getId(),
 		Name:              "reviews.bookinfo.svc.cluster.local:9080/*",
-		Kind:              "SPAN_KIND_SERVER",
+		Kind:              otelModels.SpanKindServer,
 		StartTimeUnixNano: "1693389472310270000",
 		EndTimeUnixNano:   "1693389472310916000",
 		Attributes:        attbs,

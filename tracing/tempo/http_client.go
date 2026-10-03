@@ -346,7 +346,7 @@ func hasErrors(trace otelModel.Trace) bool {
 				return true
 			}
 		}
-		if span.Status.Code == "STATUS_CODE_ERROR" {
+		if span.Status.Code == otelJson.StatusCodeError {
 			return true
 		}
 	}

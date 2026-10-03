@@ -9,6 +9,74 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestSpanKindUnmarshal checks that a span kind decodes from the number the OTLP/JSON encoding
+// requires and from the name Tempo sends.
+func TestSpanKindUnmarshal(t *testing.T) {
+	cases := map[string]struct {
+		body     string
+		expected SpanKind
+	}{
+		"a name":                             {body: `{"kind":"SPAN_KIND_SERVER"}`, expected: SpanKindServer},
+		"a number":                           {body: `{"kind":2}`, expected: SpanKindServer},
+		"another number":                     {body: `{"kind":3}`, expected: SpanKindClient},
+		"an unknown number":                  {body: `{"kind":99}`, expected: SpanKindUnspecified},
+		"a name the proto does not have yet": {body: `{"kind":"SPAN_KIND_FUTURE"}`, expected: "SPAN_KIND_FUTURE"},
+		"a number that is not a kind":        {body: `{"kind":2.5}`, expected: SpanKindUnspecified},
+		"neither a name nor a number":        {body: `{"kind":{"name":"server"}}`, expected: SpanKindUnspecified},
+		"null":                               {body: `{"kind":null}`, expected: ""},
+		"absent":                             {body: `{}`, expected: ""},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			var span Span
+			require.NoError(t, json.Unmarshal([]byte(tc.body), &span))
+			assert.Equal(t, tc.expected, span.Kind)
+		})
+	}
+}
+
+// TestStatusCodeUnmarshal checks the same for the span status code.
+func TestStatusCodeUnmarshal(t *testing.T) {
+	cases := map[string]struct {
+		body     string
+		expected StatusCode
+	}{
+		"a name":                      {body: `{"status":{"code":"STATUS_CODE_ERROR"}}`, expected: StatusCodeError},
+		"a number":                    {body: `{"status":{"code":2}}`, expected: StatusCodeError},
+		"another number":              {body: `{"status":{"code":1}}`, expected: StatusCodeOk},
+		"an unknown number":           {body: `{"status":{"code":42}}`, expected: StatusCodeUnset},
+		"with a message":              {body: `{"status":{"message":"rate limit exceeded","code":2}}`, expected: StatusCodeError},
+		"neither a name nor a number": {body: `{"status":{"code":[2]}}`, expected: StatusCodeUnset},
+		"an empty status":             {body: `{"status":{}}`, expected: ""},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			var span Span
+			require.NoError(t, json.Unmarshal([]byte(tc.body), &span))
+			assert.Equal(t, tc.expected, span.Status.Code)
+		})
+	}
+}
+
+// TestSpanKindUnmarshalWholeResponse checks that a span kind given as a number no longer fails
+// the response it arrives in. A kind is one field of one span, and decoding it into a string
+// field failed the entire body.
+func TestSpanKindUnmarshalWholeResponse(t *testing.T) {
+	body := `{"batches":[{"resource":{"attributes":[]},"scopeSpans":[{"spans":[
+		{"spanId":"1bab5054d0d765b0","kind":2,"status":{"code":2}}
+	]}]}]}`
+
+	var data Data
+	require.NoError(t, json.Unmarshal([]byte(body), &data))
+	require.Len(t, data.Batches, 1)
+	require.Len(t, data.Batches[0].ScopeSpans, 1)
+	require.Len(t, data.Batches[0].ScopeSpans[0].Spans, 1)
+	assert.Equal(t, SpanKindServer, data.Batches[0].ScopeSpans[0].Spans[0].Kind)
+	assert.Equal(t, StatusCodeError, data.Batches[0].ScopeSpans[0].Spans[0].Status.Code)
+}
+
 // TestAnyValueUnmarshal covers every variant the OTLP AnyValue oneof declares, and every form
 // the encoding permits for the two numeric ones. A variant the model does not carry decodes to
 // an empty string and the attribute reaches the UI with no value.

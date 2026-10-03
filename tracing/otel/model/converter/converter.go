@@ -64,9 +64,9 @@ func ConvertSpans(spans []otelModels.Span, serviceName string, traceID string) [
 		// Used to determine the envoy direction
 		atb_val := ""
 		switch span.Kind {
-		case "SPAN_KIND_CLIENT":
+		case otelModels.SpanKindClient:
 			atb_val = "client"
-		case "SPAN_KIND_SERVER":
+		case otelModels.SpanKindServer:
 			atb_val = "server"
 		}
 		if atb_val != "" {
@@ -201,7 +201,7 @@ func convertAttributes(attributes []otelModels.Attribute, status otelModels.Stat
 		}
 	}
 	// When Span Status is set to ERROR, an error span tag MUST be added with the Boolean value of true
-	if status.Code == "STATUS_CODE_ERROR" {
+	if status.Code == otelModels.StatusCodeError {
 		tag := jaegerModels.KeyValue{Key: "error", Value: true, Type: "bool"}
 		tags = append(tags, tag)
 	}

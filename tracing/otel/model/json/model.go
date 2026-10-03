@@ -9,6 +9,96 @@ import (
 
 // OTEL
 
+// SpanKind is an OTLP span kind.
+type SpanKind string
+
+// The OTLP span kinds, by the names the proto gives them.
+// https://github.com/open-telemetry/opentelemetry-proto/blob/main/opentelemetry/proto/trace/v1/trace.proto
+const (
+	SpanKindUnspecified SpanKind = "SPAN_KIND_UNSPECIFIED"
+	SpanKindInternal    SpanKind = "SPAN_KIND_INTERNAL"
+	SpanKindServer      SpanKind = "SPAN_KIND_SERVER"
+	SpanKindClient      SpanKind = "SPAN_KIND_CLIENT"
+	SpanKindProducer    SpanKind = "SPAN_KIND_PRODUCER"
+	SpanKindConsumer    SpanKind = "SPAN_KIND_CONSUMER"
+)
+
+// spanKindByNumber maps the OTLP SpanKind enum numbers onto their names.
+var spanKindByNumber = map[int]SpanKind{
+	0: SpanKindUnspecified,
+	1: SpanKindInternal,
+	2: SpanKindServer,
+	3: SpanKindClient,
+	4: SpanKindProducer,
+	5: SpanKindConsumer,
+}
+
+// UnmarshalJSON decodes a span kind given either by number or by name.
+func (k *SpanKind) UnmarshalJSON(data []byte) error {
+	*k = unmarshalEnum(data, spanKindByNumber)
+	return nil
+}
+
+// StatusCode is an OTLP span status code.
+type StatusCode string
+
+// The OTLP span status codes, by the names the proto gives them.
+const (
+	StatusCodeUnset StatusCode = "STATUS_CODE_UNSET"
+	StatusCodeOk    StatusCode = "STATUS_CODE_OK"
+	StatusCodeError StatusCode = "STATUS_CODE_ERROR"
+)
+
+// statusCodeByNumber maps the OTLP StatusCode enum numbers onto their names.
+var statusCodeByNumber = map[int]StatusCode{
+	0: StatusCodeUnset,
+	1: StatusCodeOk,
+	2: StatusCodeError,
+}
+
+// UnmarshalJSON decodes a status code given either by number or by name.
+func (c *StatusCode) UnmarshalJSON(data []byte) error {
+	*c = unmarshalEnum(data, statusCodeByNumber)
+	return nil
+}
+
+// unmarshalEnum decodes an OTLP enum given either as its number, which is the form the OTLP/JSON
+// encoding requires, or as its name, which the protobuf JSON mapping also permits and which is
+// what Tempo's trace API sends. A name is taken as it arrives, since the proto gains new ones
+// over time; a number is translated to the name that goes with it, and a number the proto does
+// not have yet becomes the enum's unspecified value, as does a value that is neither a number
+// nor a name. An absent field stays empty.
+//
+// None of that is reported as an error, because encoding/json abandons the rest of the document
+// at the first error an UnmarshalJSON method returns: a span kind is one field of one span, and
+// losing a whole response over it is worse than reading the span without it.
+func unmarshalEnum[T ~string](data []byte, byNumber map[int]T) T {
+	var value T
+
+	data = bytes.TrimSpace(data)
+	if len(data) == 0 || string(data) == "null" {
+		return value
+	}
+
+	if data[0] == '"' {
+		var name string
+		if err := json.Unmarshal(data, &name); err != nil {
+			return byNumber[0]
+		}
+		return T(name)
+	}
+
+	// an enum number is an int32 in the proto, whatever JSON would let it be
+	var number int32
+	if err := json.Unmarshal(data, &number); err != nil {
+		return byNumber[0]
+	}
+	if named, ok := byNumber[int(number)]; ok {
+		return named
+	}
+	return byNumber[0]
+}
+
 // ArrayValue is an OTLP array of values.
 type ArrayValue struct {
 	Values []AnyValue `json:"values"`
@@ -177,14 +267,14 @@ type Event struct {
 }
 
 type Status struct {
-	Code string `json:"code"`
+	Code StatusCode `json:"code"`
 }
 
 type Span struct {
 	TraceID           string      `json:"traceId"`
 	SpanID            string      `json:"spanId"`
 	Name              string      `json:"name"`
-	Kind              string      `json:"kind"`
+	Kind              SpanKind    `json:"kind"`
 	StartTimeUnixNano string      `json:"startTimeUnixNano"`
 	EndTimeUnixNano   string      `json:"endTimeUnixNano"`
 	Attributes        []Attribute `json:"attributes"`
