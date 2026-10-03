@@ -4,16 +4,22 @@
 // it was written as its name or as its number.
 //
 // Both encodings have to be read, because the two backends Kiali can reach do not write the
-// same one. The OTLP/JSON encoding is the protobuf JSON mapping with TWO stated divergences:
-// the two ids are hex rather than base64, and "Values of enum fields MUST be encoded as integer
-// values ... the enum name strings MUST NOT be used".
+// same one. The OTLP/JSON encoding is the protobuf JSON mapping with stated deviations from it:
+// the two ids are hex rather than base64; "Values of enum fields MUST be encoded as integer
+// values ... the enum name strings MUST NOT be used"; a field with an unknown name must be
+// ignored rather than refused, quoted in full at unmarshalOptions below; and the keys of JSON
+// objects are the field names in lowerCamelCase.
 // https://opentelemetry.io/docs/specs/otlp/#json-protobuf-encoding
 //
-// Measured, those two divergences are what tells the backends apart. Tempo answers its trace
+// Measured, the first two of those are what tells the backends apart. Tempo answers its trace
 // endpoints in the plain protobuf JSON mapping - base64 ids and "SPAN_KIND_SERVER" by name -
 // and so is not writing OTLP/JSON at all, while Jaeger's api_v3 writes hex ids and a kind of 2.
 // protojson implements the mapping, so it reads an attribute, a kind, a status code and a 64 bit
 // timestamp in every form either encoding permits, and the ids are the one thing left to repair.
+//
+// Neither backend puts the span list at the top of the document, either: Tempo's trace API calls
+// it "batches" and Jaeger's api_v3 nests the OTLP body under "result". Both are read, so the
+// envelope is the only part of a response handled by hand.
 package otlpjson
 
 import (
@@ -32,12 +38,15 @@ import (
 )
 
 // The keys a trace response can hang its list of ResourceSpans from. The OTLP name is what the
-// encoding itself defines and what Jaeger's OTLP endpoint answers with; Tempo's own trace API
-// calls the same list "batches", and its v2 endpoint wraps an OTLP body in one more object.
+// encoding itself defines; Tempo's own trace API calls the same list "batches", its v2 endpoint
+// wraps an OTLP body in a "trace" object, and Jaeger's api_v3 wraps one in a "result" object -
+// measured on both of its trace endpoints, which is what a gRPC server-streaming method looks
+// like over JSON.
 const (
 	keyResourceSpans = "resourceSpans"
 	keyBatches       = "batches"
 	keyTrace         = "trace"
+	keyResult        = "result"
 )
 
 // maxWrappers is how many objects the span list is allowed to be nested inside.
@@ -89,11 +98,11 @@ func UnmarshalTracesData(body []byte) (*tracev1.TracesData, error) {
 }
 
 // normalizeIDs repairs the ids of a response that wrote them the way the OTLP/JSON encoding
-// says to, which is the first of that encoding's two divergences from the protobuf JSON mapping:
+// says to, which is the first of that encoding's deviations from the protobuf JSON mapping:
 // "The traceId and spanId byte arrays are represented as case-insensitive hex-encoded strings;
 // they are not base64-encoded as is defined in the standard Protobuf JSON Mapping."
 // https://opentelemetry.io/docs/specs/otlp/#json-protobuf-encoding
-// The second divergence, integer-only enums, needs no repair: protojson accepts both forms.
+// The next one, integer-only enums, needs no repair: protojson accepts both forms.
 //
 // protojson implements the mapping, so it reads such an id as base64 - and hex text is itself
 // valid base64, so it does that without reporting anything: a 32 character trace id arrives as
@@ -165,10 +174,12 @@ func resourceSpans(body []byte, depth int) (json.RawMessage, error) {
 		return nil, nil
 	case envelope[keyTrace] != nil && depth < maxWrappers:
 		return resourceSpans(envelope[keyTrace], depth+1)
+	case envelope[keyResult] != nil && depth < maxWrappers:
+		return resourceSpans(envelope[keyResult], depth+1)
 	}
 
-	return nil, fmt.Errorf("[OTLP JSON] no span list in a trace response: it has none of %q, %q and %q, only %q",
-		keyResourceSpans, keyBatches, keyTrace, slices.Sorted(maps.Keys(envelope)))
+	return nil, fmt.Errorf("[OTLP JSON] no span list in a trace response: it has none of %q, %q, %q and %q, only %q",
+		keyResourceSpans, keyBatches, keyTrace, keyResult, slices.Sorted(maps.Keys(envelope)))
 }
 
 // Attributes is a list of OTLP attributes carried inside a document that is not itself OTLP.

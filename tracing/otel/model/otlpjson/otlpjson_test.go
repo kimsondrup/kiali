@@ -35,6 +35,7 @@ func TestUnmarshalEnvelopes(t *testing.T) {
 		"OTLP, as the encoding defines it": {body: `{"resourceSpans":` + spans + `}`, wantSpans: 1},
 		"Tempo's trace API":                {body: `{"batches":` + spans + `}`, wantSpans: 1},
 		"Tempo's v2 trace API":             {body: `{"trace":{"resourceSpans":` + spans + `}}`, wantSpans: 1},
+		"Jaeger's api_v3":                  {body: `{"result":{"resourceSpans":` + spans + `}}`, wantSpans: 1},
 		"a trace that holds no spans":      {body: `{}`, wantSpans: 0},
 		"an explicitly empty span list":    {body: `{"resourceSpans":[]}`, wantSpans: 0},
 		"an unrecognised shape":            {body: `{"traces":[]}`, wantErr: true},
@@ -71,6 +72,33 @@ func TestUnmarshalCapturedResponse(t *testing.T) {
 	assert.Equal(t, tracev1.Span_SPAN_KIND_CLIENT, span.GetKind())
 	assert.Equal(t, uint64(1701779876570888000), span.GetStartTimeUnixNano())
 	assert.Equal(t, "10.244.0.1", span.GetAttributes()[0].GetValue().GetStringValue())
+}
+
+// TestUnmarshalJaegerAPIv3 reads a Jaeger api_v3 body as it really arrives, trimmed to one
+// span. Two things about it are not Tempo's shape: the OTLP payload is nested under "result",
+// which is what a gRPC server-streaming method looks like over JSON, and the ids are the hex
+// text the OTLP/JSON encoding mandates rather than base64. Measured against a live Jaeger
+// 2.20.0, on both its FindTraces and its GetTrace endpoint.
+func TestUnmarshalJaegerAPIv3(t *testing.T) {
+	const body = `{"result":{"resourceSpans":[{` +
+		`"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"waypoint.bookinfo"}}]},` +
+		`"scopeSpans":[{"scope":{"name":"envoy","version":"3bb16354647d089b9a79020c9fc86cbbc5fcf84b/1.39.2-dev/Clean/RELEASE/BoringSSL"},` +
+		`"spans":[{"traceId":"5d0e0849a1eda30cefb3477ad706f301","spanId":"d7994c02b19fdc42",` +
+		`"name":"details.bookinfo.svc.cluster.local:9080/*","kind":2,` +
+		`"startTimeUnixNano":"1791032992019454593","endTimeUnixNano":"1791032992021454593",` +
+		`"status":{}}]}]}]}}`
+
+	data, err := UnmarshalTracesData([]byte(body))
+	require.NoError(t, err)
+	require.Len(t, data.GetResourceSpans(), 1)
+
+	scopeSpans := data.GetResourceSpans()[0].GetScopeSpans()[0]
+	assert.Equal(t, "envoy", scopeSpans.GetScope().GetName())
+
+	span := scopeSpans.GetSpans()[0]
+	assert.Equal(t, "5d0e0849a1eda30cefb3477ad706f301", hex.EncodeToString(span.GetTraceId()))
+	assert.Equal(t, "d7994c02b19fdc42", hex.EncodeToString(span.GetSpanId()))
+	assert.Equal(t, tracev1.Span_SPAN_KIND_SERVER, span.GetKind())
 }
 
 // TestUnmarshalSpanDialects covers the two JSON dialects a backend can answer in. The OTLP/JSON
