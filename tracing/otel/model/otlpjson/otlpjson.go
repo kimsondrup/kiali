@@ -137,12 +137,32 @@ func normalizeIDs(data *tracev1.TracesData) {
 // throughout - which has to be checked rather than assumed, because a base64 alphabet holds
 // every hex digit.
 //
-// What that leaves out is a hex id written shorter than its length, which Tempo's search API
-// does: it reports a trace id with its leading zeros dropped. Such an id is not recognised here
-// and is left as protojson read it. It does not reach a response - a search result is not OTLP
-// and does not come through here, and the trace id of a trace detail is the one the request
-// asked for - but a backend that dropped a leading zero from an id inside an OTLP body would go
-// unrepaired.
+// What that leaves out is a hex id written shorter than its length, which cannot be repaired
+// here and is left as protojson read it. The reason it cannot is worth writing down, because
+// padding the text to length looks like an obvious fix: by the time this sees the id, protojson
+// has already read the text as base64 and thrown the text away, and base64 of a length that is
+// not a whole group drops the last few bits. Measured over a 16 character span id truncated to
+// each shorter length: 15 characters come back as 11 bytes whose hex bears no relation to what
+// was written, and re-encoding cannot recover the missing character. There is nothing left to
+// pad.
+//
+// Where a short id ends up differs by which id it is, and one of the two does reach a response:
+//
+//   - a length that is 1 more than a multiple of 4 - 29 characters for a trace id, 13 for a
+//     span id - is not valid base64 at all, so protojson rejects the whole document and the
+//     caller gets an error. That is the right failure: the user sees a response that could not
+//     be read rather than a trace that looks complete.
+//   - a short trace id is harmless, because the trace id of a trace detail is the one the
+//     request asked for and the one in the body is not used.
+//   - a short span id is NOT harmless. A span id of 14 or 15 characters is reported as a 20 or
+//     22 character hex "span id", which the frontend's span table and the Grafana deep link
+//     then point at a span that does not exist.
+//
+// Nothing Kiali can query does this today - Tempo writes base64 on every JSON trace endpoint it
+// has, and Jaeger's api_v3 zero-pads, measured at 32 and 16 characters on every sampled span -
+// so the hole is in what a future backend could send, not in what one does. Tempo's search API
+// really does strip a leading zero from a trace id, but a search result is not OTLP and does
+// not come through here.
 func decodeHexID(id []byte, size int) []byte {
 	if len(id) != size*3/2 {
 		return id
