@@ -3,6 +3,7 @@ package converter
 import (
 	"encoding/hex"
 	"math"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -36,7 +37,7 @@ func TestConvertSpans(t *testing.T) {
 	id := getId()
 	serviceName := "kiali-traffic-generator.bookinfo"
 
-	jaegerSpans := ConvertSpans(spans, serviceName, id)
+	jaegerSpans := ConvertSpans(spans, nil, serviceName, id)
 	assert.Equal(jaegerModels.SpanID("49cd77d1f9dcd936"), jaegerSpans[0].SpanID)
 	assert.Equal(serviceName, jaegerSpans[0].Process.ServiceName)
 	assert.Equal("reviews.bookinfo.svc.cluster.local:9080/*", jaegerSpans[0].OperationName)
@@ -94,7 +95,7 @@ func TestConvertSpansDuration(t *testing.T) {
 				EndTimeUnixNano:   tc.end,
 			}}
 
-			converted := ConvertSpans(spans, "reviews.bookinfo", getId())
+			converted := ConvertSpans(spans, nil, "reviews.bookinfo", getId())
 			if tc.expectedDropped {
 				assert.Empty(t, converted)
 				return
@@ -197,6 +198,47 @@ func TestConvertAttributesError(t *testing.T) {
 
 	assert.Equal(t, []jaegerModels.KeyValue{errorTag}, convertAttributes(nil, tracev1.Status_STATUS_CODE_ERROR))
 	assert.Nil(t, convertAttributes(nil, tracev1.Status_STATUS_CODE_OK))
+}
+
+// TestConvertScope checks the two tags the OpenTelemetry mapping to non-OTLP formats asks for,
+// which Jaeger's own translation of the same span reports as well.
+func TestConvertScope(t *testing.T) {
+	cases := map[string]struct {
+		scope *commonv1.InstrumentationScope
+		want  []jaegerModels.KeyValue
+	}{
+		"a name and a version, as Envoy exports them": {
+			scope: &commonv1.InstrumentationScope{Name: "envoy", Version: "1.39.2-dev"},
+			want: []jaegerModels.KeyValue{
+				{Key: "otel.scope.name", Value: "envoy", Type: jaegerModels.StringType},
+				{Key: "otel.scope.version", Value: "1.39.2-dev", Type: jaegerModels.StringType},
+			},
+		},
+		"a name alone": {
+			scope: &commonv1.InstrumentationScope{Name: "agentgateway"},
+			want: []jaegerModels.KeyValue{
+				{Key: "otel.scope.name", Value: "agentgateway", Type: jaegerModels.StringType},
+			},
+		},
+		// an empty name means the scope is unknown, which is nothing to report
+		"an empty scope, which is what Istio's own spans carry": {scope: &commonv1.InstrumentationScope{}},
+		"no scope at all": {scope: nil},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			assert.Equal(t, tc.want, convertScope(tc.scope))
+
+			converted := ConvertSpans(getSpans(), tc.scope, "reviews.bookinfo", getId())
+			var scopeTags []jaegerModels.KeyValue
+			for _, tag := range converted[0].Tags {
+				if strings.HasPrefix(tag.Key, "otel.scope.") {
+					scopeTags = append(scopeTags, tag)
+				}
+			}
+			assert.Equal(t, tc.want, scopeTags)
+		})
+	}
 }
 
 func getId() string {

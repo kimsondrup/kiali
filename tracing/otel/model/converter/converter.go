@@ -31,8 +31,9 @@ func convertSpanId(id []byte) jaegerModels.SpanID {
 
 // ConvertSpans
 // https://opentelemetry.io/docs/specs/otel/trace/sdk_exporters/jaeger
-func ConvertSpans(spans []*tracev1.Span, serviceName string, traceID string) []jaegerModels.Span {
+func ConvertSpans(spans []*tracev1.Span, scope *commonv1.InstrumentationScope, serviceName string, traceID string) []jaegerModels.Span {
 	var toRet []jaegerModels.Span
+	scopeTags := convertScope(scope)
 	for _, span := range spans {
 		// a span with no start time is not placed anywhere on a timeline, and the OTLP proto
 		// requires one, so there is nothing to report it as
@@ -56,7 +57,7 @@ func ConvertSpans(spans []*tracev1.Span, serviceName string, traceID string) []j
 			Flags:         0,
 			OperationName: span.GetName(),
 			References:    convertReferences(jaegerTraceId, parentSpanId),
-			Tags:          convertAttributes(span.GetAttributes(), span.GetStatus().GetCode()),
+			Tags:          append(convertAttributes(span.GetAttributes(), span.GetStatus().GetCode()), scopeTags...),
 			Logs:          []jaegerModels.Log{},
 			ProcessID:     "",
 			Process:       &jaegerModels.Process{Tags: []jaegerModels.KeyValue{}, ServiceName: serviceName},
@@ -191,6 +192,21 @@ func convertReferences(traceId jaegerModels.TraceID, parentSpanId jaegerModels.S
 
 	references = append(references, ref)
 	return references
+}
+
+// convertScope reports an OTLP instrumentation scope as the span tags the OpenTelemetry mapping
+// to non-OTLP formats defines for it. Jaeger's own translator reports the same two tags and
+// leaves out a name or a version that is empty, which the mapping says means unknown.
+// https://opentelemetry.io/docs/specs/otel/common/mapping-to-non-otlp/#instrumentationscope
+func convertScope(scope *commonv1.InstrumentationScope) []jaegerModels.KeyValue {
+	var tags []jaegerModels.KeyValue
+	if scope.GetName() != "" {
+		tags = append(tags, jaegerModels.KeyValue{Key: "otel.scope.name", Value: scope.GetName(), Type: jaegerModels.StringType})
+	}
+	if scope.GetVersion() != "" {
+		tags = append(tags, jaegerModels.KeyValue{Key: "otel.scope.version", Value: scope.GetVersion(), Type: jaegerModels.StringType})
+	}
+	return tags
 }
 
 func convertAttributes(attributes []*commonv1.KeyValue, status tracev1.Status_StatusCode) []jaegerModels.KeyValue {

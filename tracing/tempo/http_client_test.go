@@ -196,6 +196,47 @@ func TestGetTraceTypedAttributes(t *testing.T) {
 	assert.Contains(t, tags["@jaeger@warnings"].Value, "clock skew adjustment disabled")
 }
 
+// TestGetTraceScopeTags reads the instrumentation scope of the same captured trace, whose two
+// resources were instrumented by different libraries. The scope used to decode into an empty
+// struct, so the converter never saw it and these two tags could not be reported at all.
+func TestGetTraceScopeTags(t *testing.T) {
+	baseUrl := getBaseUrl()
+
+	byteValue, err := os.ReadFile(responseTypedTrace)
+	assert.Nil(t, err)
+
+	httpClient := http.Client{Transport: RoundTripFunc(func(req *http.Request) *http.Response {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(string(byteValue))),
+		}
+	})}
+
+	tempoClient, err := NewOtelClient(context.TODO())
+	assert.Nil(t, err)
+
+	response, err := tempoClient.GetTraceDetailHTTP(context.Background(), httpClient, baseUrl, "cafe9bc0903e18f6b914752f8ee577a5")
+	assert.Nil(t, err)
+
+	scopes := map[string]string{}
+	for _, span := range response.Data.Spans {
+		name, version := "", ""
+		for _, tag := range span.Tags {
+			switch tag.Key {
+			case "otel.scope.name":
+				name = tag.Value.(string)
+			case "otel.scope.version":
+				version = tag.Value.(string)
+			}
+		}
+		assert.NotEmpty(t, name)
+		scopes[name] = version
+	}
+
+	// a version that is empty means unknown, which the mapping says to leave out
+	assert.Equal(t, map[string]string{"agentgateway": "", "nginx": "1.31.6"}, scopes)
+}
+
 // TestGetTracesTypedAttributes reads the same attributes on the search path, where they arrive
 // inside Tempo's own response shape rather than as OTLP.
 func TestGetTracesTypedAttributes(t *testing.T) {

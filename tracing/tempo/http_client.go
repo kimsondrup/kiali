@@ -274,7 +274,7 @@ func convertSingleTrace(traces *tracev1.TracesData, id string) (*model.TracingRe
 			// a resource carries one group of spans per instrumentation scope, and a service that
 			// uses more than one instrumentation library sends more than one group
 			for _, scopeSpan := range resourceSpan.GetScopeSpans() {
-				jaegerModel.Spans = append(jaegerModel.Spans, converter.ConvertSpans(scopeSpan.GetSpans(), serviceName, id)...)
+				jaegerModel.Spans = append(jaegerModel.Spans, converter.ConvertSpans(scopeSpan.GetSpans(), scopeSpan.GetScope(), serviceName, id)...)
 			}
 		}
 		jaegerModel.Matched = len(jaegerModel.Spans)
