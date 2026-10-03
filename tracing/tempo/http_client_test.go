@@ -432,6 +432,27 @@ func TestUnreadableBody(t *testing.T) {
 	}
 }
 
+// TestGetTracesWithoutSpanSet covers a search result that reports no matched spans, which the
+// service name used to be taken from without looking at whether there was one.
+func TestGetTracesWithoutSpanSet(t *testing.T) {
+	baseUrl := getBaseUrl()
+
+	httpClient := http.Client{Transport: RoundTripFunc(func(req *http.Request) *http.Response {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(`{"traces":[{"traceID":"cafe9bc0903e18f6b914752f8ee577a5","spanSet":{}}]}`)),
+		}
+	})}
+
+	tempoClient, err := NewOtelClient(context.TODO())
+	assert.Nil(t, err)
+
+	response, err := tempoClient.GetAppTracesHTTP(context.Background(), httpClient, baseUrl, serviceName, models.TracingQuery{})
+	assert.Nil(t, err)
+	assert.Equal(t, 1, len(response.Data))
+	assert.Empty(t, response.Data[0].Spans)
+}
+
 func TestErrorResponse(t *testing.T) {
 	baseUrl := getBaseUrl()
 

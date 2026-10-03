@@ -204,7 +204,11 @@ func (oc *OtelHTTPClient) transformTrace(ctx context.Context, traces *otelModel.
 			if limit != 0 && i >= limit {
 				break
 			}
-			serviceName = getServiceName(trace.SpanSet.Spans[0].Attributes)
+			// a matched trace carries the spans that matched, and a trace that reports only its
+			// statistics carries none; the service name then stays whatever the last one gave
+			if len(trace.SpanSet.Spans) > 0 {
+				serviceName = getServiceName(trace.SpanSet.Spans[0].Attributes)
+			}
 			if error == "true" {
 				if !hasErrors(trace) {
 					continue
