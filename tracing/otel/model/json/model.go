@@ -99,6 +99,18 @@ func unmarshalEnum[T ~string](data []byte, byNumber map[int]T) T {
 	return byNumber[0]
 }
 
+// Nanos is an OTLP timestamp, in nanoseconds since the Unix epoch. It is a 64 bit integer, so
+// the OTLP/JSON encoding writes it as a decimal string ("1693389472310270000") and accepts
+// either a string or a number when decoding. The text of either form lands here unchanged.
+// https://opentelemetry.io/docs/specs/otlp/#json-protobuf-encoding
+type Nanos string
+
+// UnmarshalJSON decodes a timestamp given either as a quoted number or as a bare one.
+func (n *Nanos) UnmarshalJSON(data []byte) error {
+	*n = Nanos(numberText(data))
+	return nil
+}
+
 // ArrayValue is an OTLP array of values.
 type ArrayValue struct {
 	Values []AnyValue `json:"values"`
@@ -262,7 +274,7 @@ type Attribute struct {
 }
 
 type Event struct {
-	TimeUnixNano string `json:"timeUnixNano"`
+	TimeUnixNano Nanos  `json:"timeUnixNano"`
 	Name         string `json:"name"`
 }
 
@@ -275,8 +287,8 @@ type Span struct {
 	SpanID            string      `json:"spanId"`
 	Name              string      `json:"name"`
 	Kind              SpanKind    `json:"kind"`
-	StartTimeUnixNano string      `json:"startTimeUnixNano"`
-	EndTimeUnixNano   string      `json:"endTimeUnixNano"`
+	StartTimeUnixNano Nanos       `json:"startTimeUnixNano"`
+	EndTimeUnixNano   Nanos       `json:"endTimeUnixNano"`
 	Attributes        []Attribute `json:"attributes"`
 	Events            []Event     `json:"events"`
 	Status            Status      `json:"status"`

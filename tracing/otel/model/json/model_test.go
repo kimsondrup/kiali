@@ -77,6 +77,28 @@ func TestSpanKindUnmarshalWholeResponse(t *testing.T) {
 	assert.Equal(t, StatusCodeError, data.Batches[0].ScopeSpans[0].Spans[0].Status.Code)
 }
 
+// TestNanosUnmarshal checks that a timestamp decodes from the decimal string the encoding writes
+// and from the bare number it also accepts. The bare form used to fail the whole response.
+func TestNanosUnmarshal(t *testing.T) {
+	cases := map[string]struct {
+		body     string
+		expected Nanos
+	}{
+		"a quoted number": {body: `{"startTimeUnixNano":"1693389472310270000"}`, expected: "1693389472310270000"},
+		"a bare number":   {body: `{"startTimeUnixNano":1693389472310270000}`, expected: "1693389472310270000"},
+		"null":            {body: `{"startTimeUnixNano":null}`, expected: ""},
+		"absent":          {body: `{}`, expected: ""},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			var span Span
+			require.NoError(t, json.Unmarshal([]byte(tc.body), &span))
+			assert.Equal(t, tc.expected, span.StartTimeUnixNano)
+		})
+	}
+}
+
 // TestAnyValueUnmarshal covers every variant the OTLP AnyValue oneof declares, and every form
 // the encoding permits for the two numeric ones. A variant the model does not carry decodes to
 // an empty string and the attribute reaches the UI with no value.

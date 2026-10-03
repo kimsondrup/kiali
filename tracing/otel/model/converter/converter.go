@@ -29,13 +29,13 @@ func ConvertSpans(spans []otelModels.Span, serviceName string, traceID string) [
 	var toRet []jaegerModels.Span
 	for _, span := range spans {
 
-		startTime, err := strconv.ParseUint(span.StartTimeUnixNano, 10, 64)
+		startTime, err := strconv.ParseUint(string(span.StartTimeUnixNano), 10, 64)
 		if err != nil {
 			log.Errorf("Error converting start time. Skipping trace")
 			continue
 		}
 
-		duration, err := getDuration(span.EndTimeUnixNano, span.StartTimeUnixNano)
+		duration, err := getDuration(string(span.EndTimeUnixNano), string(span.StartTimeUnixNano))
 		if err != nil {
 			log.Errorf("Error converting duration. Skipping trace")
 			continue
