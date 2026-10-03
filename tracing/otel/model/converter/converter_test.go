@@ -1,12 +1,15 @@
 package converter
 
 import (
+	"encoding/hex"
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	commonv1 "go.opentelemetry.io/proto/otlp/common/v1"
+	tracev1 "go.opentelemetry.io/proto/otlp/trace/v1"
 
 	jaegerModels "github.com/kiali/kiali/tracing/jaeger/model/json"
-	otelModels "github.com/kiali/kiali/tracing/otel/model/json"
 )
 
 func TestConvertId(t *testing.T) {
@@ -20,9 +23,10 @@ func TestConvertId(t *testing.T) {
 func TestConvertSpanId(t *testing.T) {
 	assert := assert.New(t)
 
-	id := getId()
-	jaegerId := convertSpanId(id)
-	assert.Equal(jaegerModels.SpanID(id), jaegerId)
+	id, err := hex.DecodeString("49cd77d1f9dcd936")
+	assert.Nil(err)
+	assert.Equal(jaegerModels.SpanID("49cd77d1f9dcd936"), convertSpanId(id))
+	assert.Equal(jaegerModels.SpanID(""), convertSpanId(nil))
 }
 
 func TestConvertSpans(t *testing.T) {
@@ -33,9 +37,105 @@ func TestConvertSpans(t *testing.T) {
 	serviceName := "kiali-traffic-generator.bookinfo"
 
 	jaegerSpans := ConvertSpans(spans, serviceName, id)
-	assert.Equal(jaegerModels.SpanID(id), jaegerSpans[0].SpanID)
+	assert.Equal(jaegerModels.SpanID("49cd77d1f9dcd936"), jaegerSpans[0].SpanID)
 	assert.Equal(serviceName, jaegerSpans[0].Process.ServiceName)
 	assert.Equal("reviews.bookinfo.svc.cluster.local:9080/*", jaegerSpans[0].OperationName)
+	assert.Equal(uint64(646), jaegerSpans[0].Duration)
+	assert.Equal(jaegerModels.TraceID(id), jaegerSpans[0].References[0].TraceID)
+	assert.Equal(jaegerModels.SpanID("1234567890abcdef"), jaegerSpans[0].References[0].SpanID)
+}
+
+// TestConvertAttributes covers the tag a span attribute becomes, for every variant an OTLP
+// attribute value can be written as. The frontend reads a status code as a number and an error
+// flag for truth, so the tag type matters as much as the value does.
+func TestConvertAttributes(t *testing.T) {
+	cases := map[string]struct {
+		value     *commonv1.AnyValue
+		wantValue any
+		wantType  jaegerModels.ValueType
+	}{
+		"a string": {
+			value:     &commonv1.AnyValue{Value: &commonv1.AnyValue_StringValue{StringValue: "HTTP/1.1"}},
+			wantValue: "HTTP/1.1", wantType: jaegerModels.StringType,
+		},
+		"a bool": {
+			value:     &commonv1.AnyValue{Value: &commonv1.AnyValue_BoolValue{BoolValue: true}},
+			wantValue: true, wantType: jaegerModels.BoolType,
+		},
+		"an int": {
+			value:     &commonv1.AnyValue{Value: &commonv1.AnyValue_IntValue{IntValue: 503}},
+			wantValue: int64(503), wantType: jaegerModels.Int64Type,
+		},
+		"a double": {
+			value:     &commonv1.AnyValue{Value: &commonv1.AnyValue_DoubleValue{DoubleValue: 1.5}},
+			wantValue: 1.5, wantType: jaegerModels.Float64Type,
+		},
+		"a double that is not a finite number": {
+			value:     &commonv1.AnyValue{Value: &commonv1.AnyValue_DoubleValue{DoubleValue: math.Inf(1)}},
+			wantValue: "+Inf", wantType: jaegerModels.StringType,
+		},
+		"bytes": {
+			value:     &commonv1.AnyValue{Value: &commonv1.AnyValue_BytesValue{BytesValue: []byte("hi")}},
+			wantValue: []byte("hi"), wantType: jaegerModels.BinaryType,
+		},
+		"an array, which Jaeger renders as JSON too": {
+			value: &commonv1.AnyValue{Value: &commonv1.AnyValue_ArrayValue{ArrayValue: &commonv1.ArrayValue{
+				Values: []*commonv1.AnyValue{
+					{Value: &commonv1.AnyValue_StringValue{StringValue: "a"}},
+					{Value: &commonv1.AnyValue_IntValue{IntValue: 2}},
+				},
+			}}},
+			wantValue: `["a",2]`, wantType: jaegerModels.StringType,
+		},
+		"a map": {
+			value: &commonv1.AnyValue{Value: &commonv1.AnyValue_KvlistValue{KvlistValue: &commonv1.KeyValueList{
+				Values: []*commonv1.KeyValue{
+					{Key: "k", Value: &commonv1.AnyValue{Value: &commonv1.AnyValue_StringValue{StringValue: "v"}}},
+				},
+			}}},
+			wantValue: `{"k":"v"}`, wantType: jaegerModels.StringType,
+		},
+		"no variant set": {
+			value:     &commonv1.AnyValue{},
+			wantValue: "", wantType: jaegerModels.StringType,
+		},
+		"no value at all": {
+			value:     nil,
+			wantValue: "", wantType: jaegerModels.StringType,
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			attributes := []*commonv1.KeyValue{{Key: "k", Value: tc.value}}
+			tags := convertAttributes(attributes, tracev1.Status_STATUS_CODE_UNSET)
+
+			assert.Len(t, tags, 1)
+			assert.Equal(t, "k", tags[0].Key)
+			assert.Equal(t, tc.wantValue, tags[0].Value)
+			assert.Equal(t, tc.wantType, tags[0].Type)
+		})
+	}
+}
+
+// TestConvertAttributesError covers the two ways a span says it failed: the status attribute
+// Tempo's search API selects, and the span status the OTLP proto carries.
+func TestConvertAttributesError(t *testing.T) {
+	errorTag := jaegerModels.KeyValue{Key: "error", Value: true, Type: jaegerModels.BoolType}
+
+	attribute := []*commonv1.KeyValue{
+		{Key: "status", Value: &commonv1.AnyValue{Value: &commonv1.AnyValue_StringValue{StringValue: "error"}}},
+	}
+	assert.Equal(t, []jaegerModels.KeyValue{errorTag}, convertAttributes(attribute, tracev1.Status_STATUS_CODE_UNSET))
+
+	unset := []*commonv1.KeyValue{
+		{Key: "status", Value: &commonv1.AnyValue{Value: &commonv1.AnyValue_StringValue{StringValue: "unset"}}},
+	}
+	assert.Equal(t, []jaegerModels.KeyValue{{Key: "status", Value: "unset", Type: jaegerModels.StringType}},
+		convertAttributes(unset, tracev1.Status_STATUS_CODE_UNSET))
+
+	assert.Equal(t, []jaegerModels.KeyValue{errorTag}, convertAttributes(nil, tracev1.Status_STATUS_CODE_ERROR))
+	assert.Nil(t, convertAttributes(nil, tracev1.Status_STATUS_CODE_OK))
 }
 
 func getId() string {
@@ -43,35 +143,28 @@ func getId() string {
 	return id
 }
 
-func getSpans() []otelModels.Span {
-	var spans []otelModels.Span
+func getSpans() []*tracev1.Span {
+	traceID, _ := hex.DecodeString(getId())
+	spanID, _ := hex.DecodeString("49cd77d1f9dcd936")
+	parentSpanID, _ := hex.DecodeString("1234567890abcdef")
 
-	attbs := getAttributes()
-
-	span := otelModels.Span{
-		TraceID:           getId(),
-		SpanID:            getId(),
+	return []*tracev1.Span{{
+		TraceId:           traceID,
+		SpanId:            spanID,
+		ParentSpanId:      parentSpanID,
 		Name:              "reviews.bookinfo.svc.cluster.local:9080/*",
-		Kind:              "SPAN_KIND_SERVER",
-		StartTimeUnixNano: "1693389472310270000",
-		EndTimeUnixNano:   "1693389472310916000",
-		Attributes:        attbs,
-		Events:            []otelModels.Event{},
-		Status:            otelModels.Status{},
-	}
-
-	spans = append(spans, span)
-
-	return spans
+		Kind:              tracev1.Span_SPAN_KIND_SERVER,
+		StartTimeUnixNano: 1693389472310270000,
+		EndTimeUnixNano:   1693389472310916000,
+		Attributes:        getAttributes(),
+		Events:            []*tracev1.Span_Event{},
+		Status:            &tracev1.Status{},
+	}}
 }
 
-func getAttributes() []otelModels.Attribute {
-	var attbs []otelModels.Attribute
-	atb1 := otelModels.Attribute{Key: "guid:x-request-id", Value: otelModels.ValueString{StringValue: "48c7189e-1e39-9984-9556-20a8f2e8be45"}}
-	atb2 := otelModels.Attribute{Key: "ttp.protocol\"", Value: otelModels.ValueString{StringValue: "HTTP/1.1"}}
-
-	attbs = append(attbs, atb1)
-	attbs = append(attbs, atb2)
-
-	return attbs
+func getAttributes() []*commonv1.KeyValue {
+	return []*commonv1.KeyValue{
+		{Key: "guid:x-request-id", Value: &commonv1.AnyValue{Value: &commonv1.AnyValue_StringValue{StringValue: "48c7189e-1e39-9984-9556-20a8f2e8be45"}}},
+		{Key: "ttp.protocol\"", Value: &commonv1.AnyValue{Value: &commonv1.AnyValue_StringValue{StringValue: "HTTP/1.1"}}},
+	}
 }

@@ -1,12 +1,17 @@
 package converter
 
 import (
+	"encoding/hex"
+	"encoding/json"
+	"math"
 	"strconv"
+
+	commonv1 "go.opentelemetry.io/proto/otlp/common/v1"
+	tracev1 "go.opentelemetry.io/proto/otlp/trace/v1"
 
 	"github.com/kiali/kiali/log"
 	jaegerModels "github.com/kiali/kiali/tracing/jaeger/model/json"
 	otel "github.com/kiali/kiali/tracing/otel/model"
-	otelModels "github.com/kiali/kiali/tracing/otel/model/json"
 	"github.com/kiali/kiali/tracing/tempo/tempopb"
 	v1 "github.com/kiali/kiali/tracing/tempo/tempopb/common/v1"
 	v11 "github.com/kiali/kiali/tracing/tempo/tempopb/resource/v1"
@@ -17,42 +22,34 @@ func ConvertId(id string) jaegerModels.TraceID {
 	return jaegerModels.TraceID(id)
 }
 
-// convertSpanId
-func convertSpanId(id string) jaegerModels.SpanID {
-	return jaegerModels.SpanID(id)
+// convertSpanId renders a span id as the hex text every Kiali response reports an id as, and
+// which Tempo's search API already answers with. The proto declares the id as the 8 bytes it
+// is, so the text is made here rather than copied from whatever the backend wrote.
+func convertSpanId(id []byte) jaegerModels.SpanID {
+	return jaegerModels.SpanID(hex.EncodeToString(id))
 }
 
 // ConvertSpans
 // https://opentelemetry.io/docs/specs/otel/trace/sdk_exporters/jaeger
-func ConvertSpans(spans []otelModels.Span, serviceName string, traceID string) []jaegerModels.Span {
+func ConvertSpans(spans []*tracev1.Span, serviceName string, traceID string) []jaegerModels.Span {
 	var toRet []jaegerModels.Span
 	for _, span := range spans {
-
-		startTime, err := strconv.ParseUint(span.StartTimeUnixNano, 10, 64)
-		if err != nil {
-			log.Errorf("Error converting start time. Skipping trace")
-			continue
-		}
-
-		duration, err := getDuration(span.EndTimeUnixNano, span.StartTimeUnixNano)
-		if err != nil {
-			log.Errorf("Error converting duration. Skipping trace")
-			continue
-		}
-		jaegerTraceId := ConvertId(traceID) // The traceID from the SpanID doesn't look to match (ex. Q3xfr1lMsbi2OX9CxUbYug==)
-		jaegerSpanId := convertSpanId(span.SpanID)
-		parentSpanId := convertSpanId(span.ParentSpanId)
+		// the span carries its own trace id, and it is readable now, but the response answers a
+		// request for one trace and is keyed throughout by the id that was asked for
+		jaegerTraceId := ConvertId(traceID)
+		jaegerSpanId := convertSpanId(span.GetSpanId())
+		parentSpanId := convertSpanId(span.GetParentSpanId())
 
 		jaegerSpan := jaegerModels.Span{
 			TraceID:   jaegerTraceId,
 			SpanID:    jaegerSpanId,
-			Duration:  duration,
-			StartTime: startTime / 1000,
+			Duration:  getDuration(span),
+			StartTime: span.GetStartTimeUnixNano() / 1000,
 			// No more mapped data
 			Flags:         0,
-			OperationName: span.Name,
+			OperationName: span.GetName(),
 			References:    convertReferences(jaegerTraceId, parentSpanId),
-			Tags:          convertAttributes(span.Attributes, span.Status),
+			Tags:          convertAttributes(span.GetAttributes(), span.GetStatus().GetCode()),
 			Logs:          []jaegerModels.Log{},
 			ProcessID:     "",
 			Process:       &jaegerModels.Process{Tags: []jaegerModels.KeyValue{}, ServiceName: serviceName},
@@ -62,14 +59,14 @@ func ConvertSpans(spans []otelModels.Span, serviceName string, traceID string) [
 		// This is how Jaeger reports it
 		// Used to determine the envoy direction
 		atb_val := ""
-		switch span.Kind {
-		case "SPAN_KIND_CLIENT":
+		switch span.GetKind() {
+		case tracev1.Span_SPAN_KIND_CLIENT:
 			atb_val = "client"
-		case "SPAN_KIND_SERVER":
+		case tracev1.Span_SPAN_KIND_SERVER:
 			atb_val = "server"
 		}
 		if atb_val != "" {
-			atb := jaegerModels.KeyValue{Key: "span.kind", Value: atb_val, Type: "string"}
+			atb := jaegerModels.KeyValue{Key: "span.kind", Value: atb_val, Type: jaegerModels.StringType}
 			jaegerSpan.Tags = append(jaegerSpan.Tags, atb)
 		}
 
@@ -127,22 +124,22 @@ func ConvertSpanSet(span otel.Span, serviceName string, traceId string, rootName
 	}
 
 	jaegerTraceId := ConvertId(traceId)
-	jaegerSpanId := convertSpanId(span.SpanID)
 	operationName := rootName
 	if span.Name != "" {
 		operationName = span.Name
 	}
 
 	jaegerSpan := jaegerModels.Span{
-		TraceID:   jaegerTraceId,
-		SpanID:    jaegerSpanId,
+		TraceID: jaegerTraceId,
+		// Tempo's search API reports the span id as hex text already
+		SpanID:    jaegerModels.SpanID(span.SpanID),
 		Duration:  duration / 1000, // Provided in ns, Jaeger uses ms
 		StartTime: startTime / 1000,
 		// No more mapped data
 		Flags: 0,
 		// OperationName: span.Name,
 		References:    []jaegerModels.Reference{},
-		Tags:          convertAttributes(span.Attributes, span.Status),
+		Tags:          convertAttributes(span.Attributes, span.Status.Code),
 		Logs:          []jaegerModels.Log{},
 		OperationName: operationName,
 		ProcessID:     "",
@@ -155,19 +152,10 @@ func ConvertSpanSet(span otel.Span, serviceName string, traceId string, rootName
 	return toRet
 }
 
-func getDuration(end string, start string) (uint64, error) {
-	endInt, err := strconv.ParseUint(end, 10, 64)
-	if err != nil {
-		log.Errorf("Error converting end date: %s", err.Error())
-		return 0, err
-	}
-	startInt, err := strconv.ParseUint(start, 10, 64)
-	if err != nil {
-		log.Errorf("Error converting start date: %s", err.Error())
-		return 0, err
-	}
+// getDuration returns the span's duration in microseconds, which Jaeger reports it in.
+func getDuration(span *tracev1.Span) uint64 {
 	// nano to micro
-	return (endInt - startInt) / 1000, nil
+	return (span.GetEndTimeUnixNano() - span.GetStartTimeUnixNano()) / 1000
 }
 
 func convertReferences(traceId jaegerModels.TraceID, parentSpanId jaegerModels.SpanID) []jaegerModels.Reference {
@@ -187,23 +175,91 @@ func convertReferences(traceId jaegerModels.TraceID, parentSpanId jaegerModels.S
 	return references
 }
 
-func convertAttributes(attributes []otelModels.Attribute, status otelModels.Status) []jaegerModels.KeyValue {
+func convertAttributes(attributes []*commonv1.KeyValue, status tracev1.Status_StatusCode) []jaegerModels.KeyValue {
 	var tags []jaegerModels.KeyValue
 	for _, atb := range attributes {
-		if atb.Key == "status" && atb.Value.StringValue == "error" {
-			tag := jaegerModels.KeyValue{Key: "error", Value: true, Type: "bool"}
+		if atb.GetKey() == "status" && atb.GetValue().GetStringValue() == "error" {
+			tag := jaegerModels.KeyValue{Key: "error", Value: true, Type: jaegerModels.BoolType}
 			tags = append(tags, tag)
 		} else {
-			tag := jaegerModels.KeyValue{Key: atb.Key, Value: atb.Value.StringValue, Type: "string"}
+			value, valueType := attributeValue(atb.GetValue())
+			tag := jaegerModels.KeyValue{Key: atb.GetKey(), Value: value, Type: valueType}
 			tags = append(tags, tag)
 		}
 	}
 	// When Span Status is set to ERROR, an error span tag MUST be added with the Boolean value of true
-	if status.Code == "STATUS_CODE_ERROR" {
-		tag := jaegerModels.KeyValue{Key: "error", Value: true, Type: "bool"}
+	if status == tracev1.Status_STATUS_CODE_ERROR {
+		tag := jaegerModels.KeyValue{Key: "error", Value: true, Type: jaegerModels.BoolType}
 		tags = append(tags, tag)
 	}
 	return tags
+}
+
+// attributeValue maps an OTLP attribute value onto a Jaeger tag value and the tag type that
+// describes it. Jaeger's own API reports typed tags for the same attributes, and the frontend
+// reads some of them as numbers and booleans rather than as text.
+func attributeValue(value *commonv1.AnyValue) (any, jaegerModels.ValueType) {
+	switch plain := plainValue(value).(type) {
+	case string:
+		return plain, jaegerModels.StringType
+	case bool:
+		return plain, jaegerModels.BoolType
+	case int64:
+		return plain, jaegerModels.Int64Type
+	case float64:
+		// JSON has no NaN and no infinity, so a double that is not a finite number is reported as
+		// its text: a number tag holding one could not be encoded into Kiali's own response.
+		if math.IsNaN(plain) || math.IsInf(plain, 0) {
+			return strconv.FormatFloat(plain, 'g', -1, 64), jaegerModels.StringType
+		}
+		return plain, jaegerModels.Float64Type
+	case []byte:
+		return plain, jaegerModels.BinaryType
+	case nil:
+		// no variant set, or the one the proto reserves for profiling, which a receiver of any
+		// other signal is told to read as though the value were absent
+		return "", jaegerModels.StringType
+	default:
+		// an array or a map, which Jaeger's own OTLP translation renders as JSON as well
+		text, err := json.Marshal(plain)
+		if err != nil {
+			log.Errorf("Error rendering attribute value: %s", err.Error())
+			return "", jaegerModels.StringType
+		}
+		return string(text), jaegerModels.StringType
+	}
+}
+
+// plainValue returns an OTLP attribute value as a plain Go value, nested values included, and
+// nil when no variant of it is set.
+func plainValue(value *commonv1.AnyValue) any {
+	switch variant := value.GetValue().(type) {
+	case *commonv1.AnyValue_StringValue:
+		return variant.StringValue
+	case *commonv1.AnyValue_BoolValue:
+		return variant.BoolValue
+	case *commonv1.AnyValue_IntValue:
+		return variant.IntValue
+	case *commonv1.AnyValue_DoubleValue:
+		return variant.DoubleValue
+	case *commonv1.AnyValue_BytesValue:
+		return variant.BytesValue
+	case *commonv1.AnyValue_ArrayValue:
+		items := variant.ArrayValue.GetValues()
+		values := make([]any, 0, len(items))
+		for _, item := range items {
+			values = append(values, plainValue(item))
+		}
+		return values
+	case *commonv1.AnyValue_KvlistValue:
+		items := variant.KvlistValue.GetValues()
+		values := make(map[string]any, len(items))
+		for _, item := range items {
+			values[item.GetKey()] = plainValue(item.GetValue())
+		}
+		return values
+	}
+	return nil
 }
 
 func convertModelAttributes(attributes []*v1.KeyValue) []jaegerModels.KeyValue {

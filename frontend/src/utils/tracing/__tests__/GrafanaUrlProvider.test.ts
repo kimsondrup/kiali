@@ -1,4 +1,5 @@
 import { GrafanaUrlProvider } from '../UrlProviders/Grafana';
+import type { SpanData } from 'types/TracingInfo';
 
 type ExploreFilter = {
   operator: string;
@@ -94,5 +95,24 @@ describe('GrafanaUrlProvider.AppSearchUrl', () => {
       value: ['true'],
       valueType: 'string'
     });
+  });
+});
+
+describe('GrafanaUrlProvider.SpanUrl', () => {
+  const provider = new GrafanaUrlProvider('http://grafana:3000', {
+    datasource_uid: 'tempo-uid',
+    orgID: '1'
+  });
+
+  // Kiali reports a span id as the hex text Tempo's own search API reports, so the link uses it
+  // as it stands. It used to arrive base64 from the trace detail endpoint and was decoded here.
+  it('links to the span by the id Kiali reports', () => {
+    const span = { spanID: 'f786f35a07268736', traceID: 'ee9204f76db57d0aa38482c1243cea1' } as SpanData;
+
+    const url = provider.SpanUrl(span);
+    const panes = JSON.parse(decodeURIComponent(new URL(url).searchParams.get('panes')!));
+
+    expect(panes.a.panelsState.trace.spanId).toEqual('f786f35a07268736');
+    expect(panes.a.queries[0].query).toEqual('ee9204f76db57d0aa38482c1243cea1');
   });
 });
