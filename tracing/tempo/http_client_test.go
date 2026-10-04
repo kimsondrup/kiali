@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/kiali/kiali/models"
 	"github.com/kiali/kiali/tracing/jaeger/model/json"
@@ -147,6 +148,67 @@ func TestGetTrace(t *testing.T) {
 	assert.NotNil(t, response.Data)
 	assert.Equal(t, len(response.Data.Spans), 8)
 	assert.Equal(t, response.Data.Matched, 8)
+}
+
+// TestGetTraceUnexpectedShape covers the bodies a 200 can hold that carry no span to read. Indexing
+// into them without checking - traces.Batches[0] for the first two, batch.ScopeSpans[0] for the
+// third - is not a missing span but a panic in a request handler: net/http recovers it, logs it and
+// closes the connection, so the view gets no answer at all rather than an empty trace.
+func TestGetTraceUnexpectedShape(t *testing.T) {
+	bodies := map[string]string{
+		"a body with no resources at all":    `{}`,
+		"an empty list of resources":         `{"batches":[]}`,
+		"the OTLP name for the same list":    `{"resourceSpans":[{"resource":{},"scopeSpans":[{"spans":[{"spanId":"AQIDBAUGBwg="}]}]}]}`,
+		"a resource with no group of spans":  `{"batches":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"orders-api"}}]}}]}`,
+		"a resource with an empty group set": `{"batches":[{"resource":{},"scopeSpans":[]}]}`,
+	}
+
+	for name, body := range bodies {
+		t.Run(name, func(t *testing.T) {
+			httpClient := http.Client{Transport: RoundTripFunc(func(req *http.Request) *http.Response {
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(strings.NewReader(body)),
+				}
+			})}
+
+			tempoClient, err := NewOtelClient(context.TODO())
+			require.NoError(t, err)
+
+			response, err := tempoClient.GetTraceDetailHTTP(context.Background(), httpClient, getBaseUrl(), "3ba55609c3cde49649cd77d1f9dcd936")
+			require.NoError(t, err)
+			require.NotNil(t, response)
+			// NotNil as well as Empty: a nil slice or map marshals to JSON null, which is what
+			// the frontend's transformTraceData chokes on, and Empty alone is satisfied by either
+			assert.NotNil(t, response.Data.Spans)
+			assert.Empty(t, response.Data.Spans)
+			assert.NotNil(t, response.Data.Processes)
+			assert.NotNil(t, response.Data.Warnings)
+			assert.Equal(t, json.TraceID("3ba55609c3cde49649cd77d1f9dcd936"), response.Data.TraceID)
+		})
+	}
+}
+
+// TestGetTracesWithoutSpanSet covers a search result that reports no matched spans, so the service
+// name has to be read without assuming there is a span set. Tempo answers a search with per-service
+// statistics as well as a span set - ../tracingtest/responseAmbient.json carries both - and the
+// statistics are what such a trace still reports.
+func TestGetTracesWithoutSpanSet(t *testing.T) {
+	httpClient := http.Client{Transport: RoundTripFunc(func(req *http.Request) *http.Response {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(`{"traces":[{"traceID":"cafe9bc0903e18f6b914752f8ee577a5","spanSet":{}}]}`)),
+		}
+	})}
+
+	tempoClient, err := NewOtelClient(context.TODO())
+	require.NoError(t, err)
+
+	response, err := tempoClient.GetAppTracesHTTP(context.Background(), httpClient, getBaseUrl(), serviceName, models.TracingQuery{})
+	require.NoError(t, err)
+	require.Equal(t, 1, len(response.Data))
+	assert.NotNil(t, response.Data[0].Spans)
+	assert.Empty(t, response.Data[0].Spans)
 }
 
 func TestErrorResponse(t *testing.T) {
