@@ -33,10 +33,15 @@ func convertSpanId(id []byte) jaegerModels.SpanID {
 // ConvertSpans reports OTLP spans as the Jaeger-shaped spans Kiali's own API returns, which is
 // the model the frontend reads whichever backend the trace came from.
 //
+// The tag names for the OpenTelemetry fields that have no Jaeger equivalent come from the
+// OpenTelemetry mapping to non-OTLP formats:
+// https://opentelemetry.io/docs/specs/otel/common/mapping-to-non-otlp/
+//
 // A span with no start time is dropped rather than reported, so the caller gets fewer spans than
 // the backend sent. The id of the trace is taken from the argument and not from the span.
-func ConvertSpans(spans []*tracev1.Span, serviceName string, traceID string) []jaegerModels.Span {
+func ConvertSpans(spans []*tracev1.Span, scope *commonv1.InstrumentationScope, serviceName string, traceID string) []jaegerModels.Span {
 	var toRet []jaegerModels.Span
+	scopeTags := convertScope(scope)
 	for _, span := range spans {
 		// a span with no start time is not placed anywhere on a timeline, and the OTLP proto
 		// requires one, so there is nothing to report it as
@@ -61,7 +66,7 @@ func ConvertSpans(spans []*tracev1.Span, serviceName string, traceID string) []j
 			Flags:         0,
 			OperationName: span.GetName(),
 			References:    convertReferences(jaegerTraceId, parentSpanId),
-			Tags:          append(convertAttributes(span.GetAttributes()), convertStatus(span.GetStatus())...),
+			Tags:          append(append(convertAttributes(span.GetAttributes()), convertStatus(span.GetStatus())...), scopeTags...),
 			Logs:          []jaegerModels.Log{},
 			ProcessID:     "",
 			Process:       &jaegerModels.Process{Tags: []jaegerModels.KeyValue{}, ServiceName: serviceName},
@@ -201,18 +206,71 @@ func convertReferences(traceId jaegerModels.TraceID, parentSpanId jaegerModels.S
 	return references
 }
 
-// convertStatus reports an OTLP span status as span tags.
+// convertScope reports an OTLP instrumentation scope as span tags. The mapping to non-OTLP formats
+// requires the scope's fields to be reported as key-value pairs and names otel.scope.name and
+// otel.scope.version for them, both at requirement level Recommended.
+//
+// It also says the deprecated otel.library.name and otel.library.version "MUST also be reported
+// with exact same values for backward compatibility reasons", and those two rows are marked
+// Recommended as well. Only the current pair is emitted, so that MUST is deliberately declined: the
+// aliases double every scope tag on every span to serve a reader that predates them, and nothing
+// Kiali ships reads either name.
+// https://opentelemetry.io/docs/specs/otel/common/mapping-to-non-otlp/#instrumentationscope
+//
+// Skipping an empty name or version is this function's own choice, not a rule from that document -
+// it prescribes nothing about an empty field. A tag whose value is the empty string says nothing a
+// missing tag does not.
+func convertScope(scope *commonv1.InstrumentationScope) []jaegerModels.KeyValue {
+	var tags []jaegerModels.KeyValue
+	if scope.GetName() != "" {
+		tags = append(tags, jaegerModels.KeyValue{Key: "otel.scope.name", Value: scope.GetName(), Type: jaegerModels.StringType})
+	}
+	if scope.GetVersion() != "" {
+		tags = append(tags, jaegerModels.KeyValue{Key: "otel.scope.version", Value: scope.GetVersion(), Type: jaegerModels.StringType})
+	}
+	return tags
+}
+
+// convertStatus reports an OTLP span status as span tags. The mapping to non-OTLP formats
+// requires the status to be reported as key-value pairs on the span "unless the Status is UNSET.
+// In the latter case it MUST NOT be reported." It names otel.status_code, whose value is "OK" or
+// "ERROR", and otel.status_description for the status message.
+// https://opentelemetry.io/docs/specs/otel/common/mapping-to-non-otlp/#span-status
+//
+// Kiali's error=true is not one of those two names and is not a substitute for them: it says
+// that a span failed and nothing about why.
 //
 // It is its own function rather than a parameter of convertAttributes because only one of that
 // function's two callers has a status to pass: Tempo's search API answers with the TraceQL
 // status intrinsic as an attribute, not with the span-level status the OTLP proto declares.
 func convertStatus(status *tracev1.Status) []jaegerModels.KeyValue {
 	var tags []jaegerModels.KeyValue
+
 	// Jaeger's own OTLP translation adds this boolean for an errored span, and Kiali's frontend
 	// reads it as the one signal that a span failed, so the Tempo path has to report it too.
 	if status.GetCode() == tracev1.Status_STATUS_CODE_ERROR {
 		tags = append(tags, jaegerModels.KeyValue{Key: "error", Value: true, Type: jaegerModels.BoolType})
 	}
+
+	// the mapping prescribes the name of the status code, not its number, and names only OK and
+	// ERROR; UNSET is the case it says not to report
+	statusCode := ""
+	switch status.GetCode() {
+	case tracev1.Status_STATUS_CODE_OK:
+		statusCode = "OK"
+	case tracev1.Status_STATUS_CODE_ERROR:
+		statusCode = "ERROR"
+	}
+	// an UNSET status is not reported at all, so its message is not reported either: the rule is
+	// about the status, not about one of its fields
+	if statusCode == "" {
+		return tags
+	}
+	tags = append(tags, jaegerModels.KeyValue{Key: "otel.status_code", Value: statusCode, Type: jaegerModels.StringType})
+	if message := status.GetMessage(); message != "" {
+		tags = append(tags, jaegerModels.KeyValue{Key: "otel.status_description", Value: message, Type: jaegerModels.StringType})
+	}
+
 	return tags
 }
 

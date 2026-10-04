@@ -40,7 +40,7 @@ func TestConvertSpans(t *testing.T) {
 	id := getId()
 	serviceName := "kiali-traffic-generator.bookinfo"
 
-	jaegerSpans := ConvertSpans(spans, serviceName, id)
+	jaegerSpans := ConvertSpans(spans, nil, serviceName, id)
 	assert.Equal(jaegerModels.SpanID("49cd77d1f9dcd936"), jaegerSpans[0].SpanID)
 	assert.Equal(serviceName, jaegerSpans[0].Process.ServiceName)
 	assert.Equal("reviews.bookinfo.svc.cluster.local:9080/*", jaegerSpans[0].OperationName)
@@ -140,19 +140,6 @@ func TestConvertAttributesError(t *testing.T) {
 		convertAttributes(unset))
 }
 
-// TestConvertStatus covers the span-level status, which arrives on the trace detail path, where
-// the response really is OTLP. The mapping to non-OTLP formats says a status of UNSET MUST NOT
-// be reported at all.
-func TestConvertStatus(t *testing.T) {
-	errorTag := jaegerModels.KeyValue{Key: "error", Value: true, Type: jaegerModels.BoolType}
-
-	assert.Equal(t, []jaegerModels.KeyValue{errorTag},
-		convertStatus(&tracev1.Status{Code: tracev1.Status_STATUS_CODE_ERROR}))
-	assert.Nil(t, convertStatus(&tracev1.Status{Code: tracev1.Status_STATUS_CODE_OK}))
-	assert.Nil(t, convertStatus(&tracev1.Status{Code: tracev1.Status_STATUS_CODE_UNSET}))
-	assert.Nil(t, convertStatus(nil))
-}
-
 // TestConvertSpansDuration checks the duration arithmetic. The subtraction is between two unsigned
 // nanosecond timestamps, so an end that is not after the start wraps round to hundreds of years:
 // without the guard, the absent end below reports 16655768095921845us, which is 528 years, and the
@@ -203,7 +190,7 @@ func TestConvertSpansDuration(t *testing.T) {
 				EndTimeUnixNano:   tc.end,
 			}}
 
-			converted := ConvertSpans(spans, "reviews.bookinfo", getId())
+			converted := ConvertSpans(spans, nil, "reviews.bookinfo", getId())
 			if tc.expectedDropped {
 				assert.Empty(t, converted)
 				return
@@ -248,6 +235,93 @@ func TestConvertAttributesUnreadVariant(t *testing.T) {
 	assert.Contains(t, logged, "probe.strindex, probe.other")
 	assert.NotContains(t, logged, "probe.unset")
 	assert.NotContains(t, logged, "http.method")
+}
+
+// TestConvertScope covers the two tags the OpenTelemetry mapping to non-OTLP formats asks for when
+// a span carries an instrumentation scope: the scope's name and version have to survive as tags
+// rather than be dropped at the JSON boundary.
+func TestConvertScope(t *testing.T) {
+	cases := map[string]struct {
+		scope *commonv1.InstrumentationScope
+		want  []jaegerModels.KeyValue
+	}{
+		"a name and a version": {
+			scope: &commonv1.InstrumentationScope{Name: "nginx", Version: "1.31.6"},
+			want: []jaegerModels.KeyValue{
+				{Key: "otel.scope.name", Value: "nginx", Type: jaegerModels.StringType},
+				{Key: "otel.scope.version", Value: "1.31.6", Type: jaegerModels.StringType},
+			},
+		},
+		"a name alone, which is the common case": {
+			scope: &commonv1.InstrumentationScope{Name: "envoy"},
+			want:  []jaegerModels.KeyValue{{Key: "otel.scope.name", Value: "envoy", Type: jaegerModels.StringType}},
+		},
+		// the mapping prescribes nothing about an empty field, and a tag whose value is the empty
+		// string says nothing a missing tag does not
+		"a scope with nothing in it": {scope: &commonv1.InstrumentationScope{}},
+		"no scope at all":            {scope: nil},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			assert.Equal(t, tc.want, convertScope(tc.scope))
+
+			spans := ConvertSpans(getSpans(), tc.scope, "reviews.bookinfo", getId())
+			require.Len(t, spans, 1)
+			for _, want := range tc.want {
+				assert.Contains(t, spans[0].Tags, want)
+			}
+			for _, tag := range spans[0].Tags {
+				if strings.HasPrefix(tag.Key, "otel.scope") {
+					assert.NotEmpty(t, tag.Value, "tag %s is reported with an empty value", tag.Key)
+				}
+			}
+		})
+	}
+}
+
+// TestConvertStatusTags covers the span status, which the mapping to non-OTLP formats says MUST
+// be reported as key-value pairs unless it is UNSET, and names otel.status_code and
+// otel.status_description for them. Kiali's error=true says that a span failed and nothing about
+// why, so it is not a substitute for either.
+func TestConvertStatusTags(t *testing.T) {
+	errorTag := jaegerModels.KeyValue{Key: "error", Value: true, Type: jaegerModels.BoolType}
+	code := func(value string) jaegerModels.KeyValue {
+		return jaegerModels.KeyValue{Key: "otel.status_code", Value: value, Type: jaegerModels.StringType}
+	}
+	description := func(value string) jaegerModels.KeyValue {
+		return jaegerModels.KeyValue{Key: "otel.status_description", Value: value, Type: jaegerModels.StringType}
+	}
+
+	cases := map[string]struct {
+		status *tracev1.Status
+		want   []jaegerModels.KeyValue
+	}{
+		"an error with a message": {
+			status: &tracev1.Status{Code: tracev1.Status_STATUS_CODE_ERROR, Message: "upstream connect error"},
+			want:   []jaegerModels.KeyValue{errorTag, code("ERROR"), description("upstream connect error")},
+		},
+		"an error with no message": {
+			status: &tracev1.Status{Code: tracev1.Status_STATUS_CODE_ERROR},
+			want:   []jaegerModels.KeyValue{errorTag, code("ERROR")},
+		},
+		"a status set to OK": {
+			status: &tracev1.Status{Code: tracev1.Status_STATUS_CODE_OK},
+			want:   []jaegerModels.KeyValue{code("OK")},
+		},
+		// "unless the Status is UNSET. In the latter case it MUST NOT be reported" - and the
+		// message goes with it, because the rule is about the status and not one of its fields
+		"an unset status with a message": {
+			status: &tracev1.Status{Message: "nothing to say about it"},
+		},
+		"no status at all": {status: nil},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			assert.Equal(t, tc.want, convertStatus(tc.status))
+		})
+	}
 }
 
 func getId() string {

@@ -288,6 +288,71 @@ func TestGetTracesTypedAttributes(t *testing.T) {
 	assert.Equal(t, int64(8080), tags["net.host.port"].Value)
 }
 
+// TestGetTraceScopeTags reads the instrumentation scope of a captured trace, whose resources name
+// two different instrumentation libraries. Both the name and the version have to reach the
+// converter so it can report them as tags.
+func TestGetTraceScopeTags(t *testing.T) {
+	byteValue, err := os.ReadFile(responseTypedTrace)
+	require.NoError(t, err)
+	require.Contains(t, string(byteValue), `"nginx"`, "the capture no longer names its scopes")
+
+	httpClient := http.Client{Transport: RoundTripFunc(func(req *http.Request) *http.Response {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(string(byteValue))),
+		}
+	})}
+
+	tempoClient, err := NewOtelClient(context.TODO())
+	require.NoError(t, err)
+
+	response, err := tempoClient.GetTraceDetailHTTP(context.Background(), httpClient, getBaseUrl(), "cafe9bc0903e18f6b914752f8ee577a5")
+	require.NoError(t, err)
+
+	scopes := map[string]string{}
+	for _, span := range response.Data.Spans {
+		name, version := "", ""
+		for _, tag := range span.Tags {
+			switch tag.Key {
+			case "otel.scope.name":
+				name = tag.Value.(string)
+			case "otel.scope.version":
+				version = tag.Value.(string)
+			}
+		}
+		require.NotEmpty(t, name, "a span of a resource that names its scope reports no scope")
+		scopes[name] = version
+	}
+	assert.Equal(t, map[string]string{"agentgateway": "", "nginx": "1.31.6"}, scopes)
+}
+
+// TestGetTraceNoScopeTags is the counter-case, over a capture whose resources all report an
+// empty scope: no tag is added for it, because a tag whose value is the empty string says
+// nothing a missing tag does not.
+func TestGetTraceNoScopeTags(t *testing.T) {
+	byteValue, err := os.ReadFile(responseTrace)
+	require.NoError(t, err)
+
+	httpClient := http.Client{Transport: RoundTripFunc(func(req *http.Request) *http.Response {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(string(byteValue))),
+		}
+	})}
+
+	tempoClient, err := NewOtelClient(context.TODO())
+	require.NoError(t, err)
+
+	response, err := tempoClient.GetTraceDetailHTTP(context.Background(), httpClient, getBaseUrl(), "3ba55609c3cde49649cd77d1f9dcd936")
+	require.NoError(t, err)
+	require.Equal(t, 8, len(response.Data.Spans))
+	for _, span := range response.Data.Spans {
+		for _, tag := range span.Tags {
+			assert.NotContains(t, tag.Key, "otel.scope")
+		}
+	}
+}
+
 // TestGetTraceEmpty covers the body Tempo answers with for a trace that holds no spans, which
 // is {} because the marshaller behind its trace API leaves out a field that is empty.
 func TestGetTraceEmpty(t *testing.T) {
