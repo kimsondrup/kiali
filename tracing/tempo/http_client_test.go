@@ -189,6 +189,37 @@ func TestGetTraceUnexpectedShape(t *testing.T) {
 	}
 }
 
+// TestGetTraceTwoScopes covers a resource whose spans arrive in more than one group. A resource
+// carries one group of spans per instrumentation scope, so a service that uses two instrumentation
+// libraries sends two groups under one resource, and every group's spans have to be read.
+//
+// No captured response in ../tracingtest exercises it - each of their resources carries exactly one
+// group - so the shape here is built from the OTLP data model, where scope_spans is a repeated
+// field and an SDK groups a resource's spans by the scope that produced them.
+func TestGetTraceTwoScopes(t *testing.T) {
+	body := `{"batches":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"orders-api"}}]},"scopeSpans":[` +
+		`{"scope":{"name":"io.opentelemetry.servlet"},"spans":[{"spanId":"0101010101010101","name":"GET /orders","startTimeUnixNano":"1701779876570888000","endTimeUnixNano":"1701779876580888000"}]},` +
+		`{"scope":{"name":"io.opentelemetry.jdbc"},"spans":[{"spanId":"0202020202020202","name":"SELECT orders","startTimeUnixNano":"1701779876571888000","endTimeUnixNano":"1701779876572888000"}]}` +
+		`]}]}`
+
+	httpClient := http.Client{Transport: RoundTripFunc(func(req *http.Request) *http.Response {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(body)),
+		}
+	})}
+
+	tempoClient, err := NewOtelClient(context.TODO())
+	require.NoError(t, err)
+
+	response, err := tempoClient.GetTraceDetailHTTP(context.Background(), httpClient, getBaseUrl(), "3ba55609c3cde49649cd77d1f9dcd936")
+	require.NoError(t, err)
+	require.Equal(t, 2, len(response.Data.Spans), "the span of the second instrumentation scope is missing")
+	assert.Equal(t, "GET /orders", response.Data.Spans[0].OperationName)
+	assert.Equal(t, "SELECT orders", response.Data.Spans[1].OperationName)
+	assert.Equal(t, 2, response.Data.Matched)
+}
+
 // TestGetTracesWithoutSpanSet covers a search result that reports no matched spans, so the service
 // name has to be read without assuming there is a span set. Tempo answers a search with per-service
 // statistics as well as a span set - ../tracingtest/responseAmbient.json carries both - and the
