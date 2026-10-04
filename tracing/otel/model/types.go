@@ -3,7 +3,7 @@ package model
 import (
 	"time"
 
-	"github.com/kiali/kiali/tracing/otel/model/json"
+	"github.com/kiali/kiali/tracing/otel/model/otlpjson"
 )
 
 // Trace is a list of spans
@@ -22,13 +22,19 @@ type TagsResponse struct {
 	TagNames []string `json:"tagNames"`
 }
 
+// Span is a span of a trace matched by Tempo's search API. The shape is Tempo's own, not OTLP,
+// but the attributes of the matched span are OTLP and are carried as such.
+//
+// There is no status field, because Tempo does not write one here: no span of any captured
+// search response in tracing/tracingtest carries a status, and the status Kiali asks for with
+// select(status) arrives as an attribute keyed "status" whose value is the TraceQL intrinsic as
+// text - "unset" on every captured span.
 type Span struct {
-	SpanID            string           `json:"spanID"`
-	StartTimeUnixNano string           `json:"startTimeUnixNano"`
-	DurationNanos     string           `json:"durationNanos"`
-	Attributes        []json.Attribute `json:"attributes"`
-	Name              string           `json:"name"`
-	Status            json.Status      `json:"status"`
+	SpanID            string              `json:"spanID"`
+	StartTimeUnixNano string              `json:"startTimeUnixNano"`
+	DurationNanos     string              `json:"durationNanos"`
+	Attributes        otlpjson.Attributes `json:"attributes"`
+	Name              string              `json:"name"`
 }
 
 type SpanSet struct {
