@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	jaegerModels "github.com/kiali/kiali/tracing/jaeger/model/json"
 	otelModels "github.com/kiali/kiali/tracing/otel/model/json"
@@ -36,6 +37,43 @@ func TestConvertSpans(t *testing.T) {
 	assert.Equal(jaegerModels.SpanID(id), jaegerSpans[0].SpanID)
 	assert.Equal(serviceName, jaegerSpans[0].Process.ServiceName)
 	assert.Equal("reviews.bookinfo.svc.cluster.local:9080/*", jaegerSpans[0].OperationName)
+}
+
+// TestConvertSpanKind covers the span.kind tag, which is how Kiali's frontend tells the two ends of
+// a call apart. It reads four values: client and producer as the outbound end, server and consumer
+// as the inbound one (utils/tracing/TracingHelper.ts and pages/Graph/Trace.ts).
+func TestConvertSpanKind(t *testing.T) {
+	cases := map[string]string{
+		"SPAN_KIND_CLIENT":      "client",
+		"SPAN_KIND_SERVER":      "server",
+		"SPAN_KIND_PRODUCER":    "producer",
+		"SPAN_KIND_CONSUMER":    "consumer",
+		"SPAN_KIND_INTERNAL":    "internal",
+		"SPAN_KIND_UNSPECIFIED": "",
+		"":                      "",
+	}
+
+	for kind, expected := range cases {
+		t.Run(kind, func(t *testing.T) {
+			spans := getSpans()
+			spans[0].Kind = kind
+
+			converted := ConvertSpans(spans, "reviews.bookinfo", getId())
+			require.Len(t, converted, 1)
+
+			var reported []string
+			for _, tag := range converted[0].Tags {
+				if tag.Key == "span.kind" {
+					reported = append(reported, tag.Value.(string))
+				}
+			}
+			if expected == "" {
+				assert.Empty(t, reported, "an unstated kind must not be reported as a kind")
+				return
+			}
+			assert.Equal(t, []string{expected}, reported)
+		})
+	}
 }
 
 func getId() string {

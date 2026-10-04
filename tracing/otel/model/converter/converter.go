@@ -61,13 +61,24 @@ func ConvertSpans(spans []otelModels.Span, serviceName string, traceID string) [
 
 		// This is how Jaeger reports it
 		// Used to determine the envoy direction
+		//
+		// The frontend reads four of the six OTLP kinds: a producer counts as the client end of a call
+		// and a consumer as the server end (utils/tracing/TracingHelper.ts, pages/Graph/Trace.ts).
 		atb_val := ""
 		switch span.Kind {
 		case "SPAN_KIND_CLIENT":
 			atb_val = "client"
 		case "SPAN_KIND_SERVER":
 			atb_val = "server"
+		case "SPAN_KIND_PRODUCER":
+			atb_val = "producer"
+		case "SPAN_KIND_CONSUMER":
+			atb_val = "consumer"
+		case "SPAN_KIND_INTERNAL":
+			atb_val = "internal"
 		}
+		// SPAN_KIND_UNSPECIFIED is left without a tag: it says the emitter did not state a kind,
+		// which is not the same as stating that the span is internal
 		if atb_val != "" {
 			atb := jaegerModels.KeyValue{Key: "span.kind", Value: atb_val, Type: "string"}
 			jaegerSpan.Tags = append(jaegerSpan.Tags, atb)
