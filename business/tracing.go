@@ -410,7 +410,9 @@ func tracesToSpans(ctx context.Context, app models.TracingName, r *model.Tracing
 		if conf.ExternalServices.Tracing.Provider == config.TempoProvider {
 			// Second, find spans for these processes
 			for _, span := range trace.Spans {
-				if span.Process.ServiceName == r.TracingServiceName {
+				// The Jaeger branch below assigns the process before reading it; here the
+				// converter has to have set one, and a span with none is not this service's.
+				if span.Process != nil && span.Process.ServiceName == r.TracingServiceName {
 					if filter == nil || filter(&span) {
 						spans = append(spans, model.TracingSpan{
 							Span:      span,

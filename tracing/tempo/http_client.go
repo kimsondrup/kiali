@@ -195,7 +195,11 @@ func (oc *OtelHTTPClient) transformTrace(ctx context.Context, traces *otelModel.
 			if limit != 0 && i >= limit {
 				break
 			}
-			serviceName = getServiceName(trace.SpanSet.Spans[0].Attributes)
+			// a matched trace carries the spans that matched, and a trace that reports only its
+			// statistics carries none; the service name then stays whatever the last one gave
+			if len(trace.SpanSet.Spans) > 0 {
+				serviceName = getServiceName(trace.SpanSet.Spans[0].Attributes)
+			}
 			if error == "true" {
 				if !hasErrors(trace) {
 					continue
@@ -244,6 +248,9 @@ func convertBatchTrace(trace otelModel.Trace, serviceName string) (jaegerModels.
 	for _, span := range trace.SpanSet.Spans {
 		jaegerModel.Spans = append(jaegerModel.Spans, converter.ConvertSpanSet(span, serviceName, trace.TraceID, trace.RootTraceName)...)
 	}
+	if jaegerModel.Spans == nil {
+		jaegerModel.Spans = []jaegerModels.Span{}
+	}
 	jaegerModel.Matched = trace.SpanSet.Matched
 	jaegerModel.Processes = map[jaegerModels.ProcessID]jaegerModels.Process{}
 	jaegerModel.Warnings = []string{}
@@ -258,17 +265,27 @@ func convertSingleTrace(traces *otelJson.Data, id string) (*model.TracingRespons
 	tracingServiceName := ""
 
 	jaegerModel.TraceID = converter.ConvertId(id)
-	if traces != nil {
+	// Both lists are the backend's, and neither is read without looking: a body that carries no
+	// resource at all, and a resource that carries no group of spans, are shapes a 200 can hold.
+	if traces != nil && len(traces.Batches) > 0 {
 		tracingServiceName = getServiceName(traces.Batches[0].Resource.Attributes)
 		for _, batch := range traces.Batches {
+			if len(batch.ScopeSpans) == 0 {
+				continue
+			}
 			serviceName := getServiceName(batch.Resource.Attributes)
 			jaegerModel.Spans = append(jaegerModel.Spans, converter.ConvertSpans(batch.ScopeSpans[0].Spans, serviceName, id)...)
 		}
 		jaegerModel.Matched = len(jaegerModel.Spans)
-		jaegerModel.Processes = map[jaegerModels.ProcessID]jaegerModels.Process{}
-		jaegerModel.Warnings = []string{}
-
 	}
+	// Set these whether or not the trace has spans. A nil slice or map serialises as JSON null, and
+	// the frontend reads all three without checking, so null takes the Traces tab down with a
+	// TypeError instead of rendering as empty.
+	if jaegerModel.Spans == nil {
+		jaegerModel.Spans = []jaegerModels.Span{}
+	}
+	jaegerModel.Processes = map[jaegerModels.ProcessID]jaegerModels.Process{}
+	jaegerModel.Warnings = []string{}
 
 	response.Data = append(response.Data, jaegerModel)
 
