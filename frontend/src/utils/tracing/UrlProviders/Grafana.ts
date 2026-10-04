@@ -14,16 +14,6 @@ function generateId(len: number): string {
   return Array.from(arr, dec2hex).join('');
 }
 
-function base64ToHex(str: string): string {
-  const raw = atob(str);
-  let result = '';
-  for (let i = 0; i < raw.length; i++) {
-    const hex = raw.charCodeAt(i).toString(16);
-    result += hex.length === 2 ? hex : `0${hex}`;
-  }
-  return result;
-}
-
 // In Grafana 10.1 (and probably 10.0, but the docs aren't clear) the URL schema has completely
 // changed. Thankfully the new schema is documented, and should be stable. It also makes it
 // possible to generate much more useful URLs. But does increase the complexity of generating
@@ -99,7 +89,7 @@ export class GrafanaUrlProvider implements TracingUrlProvider {
           datasource: { type: TEMPO, uid: this.datasourceUID }
         }
       ],
-      panelsState: { trace: { spanId: base64ToHex(span.spanID) } }
+      panelsState: { trace: { spanId: span.spanID } }
     };
 
     return `${this.grafanaUrl}/explore?panes=${encodeURIComponent(JSON.stringify({ a: pane }))}&schemaVersion=1&orgId=${

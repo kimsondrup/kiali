@@ -12,6 +12,9 @@ import (
 	"strings"
 	"time"
 
+	commonv1 "go.opentelemetry.io/proto/otlp/common/v1"
+	tracev1 "go.opentelemetry.io/proto/otlp/trace/v1"
+
 	"github.com/kiali/kiali/config"
 	"github.com/kiali/kiali/log"
 	"github.com/kiali/kiali/models"
@@ -21,7 +24,7 @@ import (
 	"github.com/kiali/kiali/tracing/otel"
 	otelModel "github.com/kiali/kiali/tracing/otel/model"
 	"github.com/kiali/kiali/tracing/otel/model/converter"
-	otelJson "github.com/kiali/kiali/tracing/otel/model/json"
+	"github.com/kiali/kiali/tracing/otel/model/otlpjson"
 	"github.com/kiali/kiali/util"
 )
 
@@ -94,7 +97,10 @@ func (oc *OtelHTTPClient) GetTraceDetailHTTP(ctx context.Context, client http.Cl
 		return nil, errors.New("[HTTP Tempo] empty body response")
 	}
 
-	responseOtel, _ := unmarshalSingleTrace(ctx, resp, &u)
+	responseOtel, errUnmarshal := unmarshalSingleTrace(ctx, resp, &u)
+	if errUnmarshal != nil {
+		return nil, errUnmarshal
+	}
 
 	response, err := convertSingleTrace(responseOtel, traceID)
 	if err != nil {
@@ -180,7 +186,10 @@ func (oc *OtelHTTPClient) queryTracesHTTP(ctx context.Context, client http.Clien
 	if err != nil {
 		limit = 0
 	}
-	response, _ := unmarshal(ctx, resp, u)
+	response, errUnmarshal := unmarshal(ctx, resp, u)
+	if errUnmarshal != nil {
+		return &model.TracingResponse{}, errUnmarshal
+	}
 
 	return oc.transformTrace(ctx, response, error, limit)
 }
@@ -225,14 +234,14 @@ func unmarshal(ctx context.Context, r []byte, u *url.URL) (*otelModel.Traces, er
 	return &response, nil
 }
 
-func unmarshalSingleTrace(ctx context.Context, r []byte, u *url.URL) (*otelJson.Data, error) {
-	var response otelJson.Data
-	if errMarshal := json.Unmarshal(r, &response); errMarshal != nil {
+func unmarshalSingleTrace(ctx context.Context, r []byte, u *url.URL) (*tracev1.TracesData, error) {
+	response, errMarshal := otlpjson.UnmarshalTracesData(r)
+	if errMarshal != nil {
 		getLoggerFromContextHTTPTempo(ctx).Error().Msgf("[HTTP Tempo] Error unmarshalling Tempo API Single trace response: %s [URL: %v]", errMarshal, u)
 		return nil, errMarshal
 	}
 
-	return &response, nil
+	return response, nil
 }
 
 // convertBatchTrace Convert a trace returned by TraceQL query into a jaeger Trace
@@ -244,6 +253,9 @@ func convertBatchTrace(trace otelModel.Trace, serviceName string) (jaegerModels.
 	for _, span := range trace.SpanSet.Spans {
 		jaegerModel.Spans = append(jaegerModel.Spans, converter.ConvertSpanSet(span, serviceName, trace.TraceID, trace.RootTraceName)...)
 	}
+	if jaegerModel.Spans == nil {
+		jaegerModel.Spans = []jaegerModels.Span{}
+	}
 	jaegerModel.Matched = trace.SpanSet.Matched
 	jaegerModel.Processes = map[jaegerModels.ProcessID]jaegerModels.Process{}
 	jaegerModel.Warnings = []string{}
@@ -252,23 +264,32 @@ func convertBatchTrace(trace otelModel.Trace, serviceName string) (jaegerModels.
 }
 
 // convertSingleTrace Convert a single trace returned by the TraceQL search endpoint
-func convertSingleTrace(traces *otelJson.Data, id string) (*model.TracingResponse, error) {
+func convertSingleTrace(traces *tracev1.TracesData, id string) (*model.TracingResponse, error) {
 	var response model.TracingResponse
 	var jaegerModel jaegerModels.Trace
 	tracingServiceName := ""
 
 	jaegerModel.TraceID = converter.ConvertId(id)
-	if traces != nil {
-		tracingServiceName = getServiceName(traces.Batches[0].Resource.Attributes)
-		for _, batch := range traces.Batches {
-			serviceName := getServiceName(batch.Resource.Attributes)
-			jaegerModel.Spans = append(jaegerModel.Spans, converter.ConvertSpans(batch.ScopeSpans[0].Spans, serviceName, id)...)
+	if resourceSpans := traces.GetResourceSpans(); len(resourceSpans) > 0 {
+		tracingServiceName = getServiceName(resourceSpans[0].GetResource().GetAttributes())
+		for _, resourceSpan := range resourceSpans {
+			serviceName := getServiceName(resourceSpan.GetResource().GetAttributes())
+			// a resource carries one group of spans per instrumentation scope, and a service that
+			// uses more than one instrumentation library sends more than one group
+			for _, scopeSpan := range resourceSpan.GetScopeSpans() {
+				jaegerModel.Spans = append(jaegerModel.Spans, converter.ConvertSpans(scopeSpan.GetSpans(), serviceName, id)...)
+			}
 		}
 		jaegerModel.Matched = len(jaegerModel.Spans)
-		jaegerModel.Processes = map[jaegerModels.ProcessID]jaegerModels.Process{}
-		jaegerModel.Warnings = []string{}
-
 	}
+	// Set these whether or not the trace has spans. A nil slice or map serialises as JSON null, and
+	// the frontend reads all three without checking, so null takes the Traces tab down with a
+	// TypeError instead of rendering as empty.
+	if jaegerModel.Spans == nil {
+		jaegerModel.Spans = []jaegerModels.Span{}
+	}
+	jaegerModel.Processes = map[jaegerModels.ProcessID]jaegerModels.Process{}
+	jaegerModel.Warnings = []string{}
 
 	response.Data = append(response.Data, jaegerModel)
 
@@ -339,24 +360,24 @@ func (oc *OtelHTTPClient) GetTraceQLQuery(ctx context.Context, u *url.URL, traci
 	return u.RawQuery
 }
 
+// hasErrors reports whether a matched span of the trace failed. The signal is the "status"
+// attribute, which is the TraceQL status intrinsic prepareTraceQL selects: Tempo answers it as
+// text, and "error" is the value it uses for a span whose OTLP status code is ERROR.
 func hasErrors(trace otelModel.Trace) bool {
 	for _, span := range trace.SpanSet.Spans {
 		for _, atb := range span.Attributes {
-			if atb.Key == "status" && atb.Value.StringValue == "error" {
+			if atb.GetKey() == "status" && atb.GetValue().GetStringValue() == "error" {
 				return true
 			}
-		}
-		if span.Status.Code == "STATUS_CODE_ERROR" {
-			return true
 		}
 	}
 	return false
 }
 
-func getServiceName(attributes []otelJson.Attribute) string {
+func getServiceName(attributes []*commonv1.KeyValue) string {
 	for _, attb := range attributes {
-		if attb.Key == "service.name" {
-			return attb.Value.StringValue
+		if attb.GetKey() == "service.name" {
+			return attb.GetValue().GetStringValue()
 		}
 	}
 	return ""
