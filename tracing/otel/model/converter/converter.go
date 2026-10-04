@@ -1,6 +1,8 @@
 package converter
 
 import (
+	"encoding/json"
+	"math"
 	"strconv"
 
 	"github.com/kiali/kiali/log"
@@ -85,7 +87,9 @@ func ConvertTraceMetadata(trace tempopb.TraceSearchMetadata, serviceName string)
 		Processes: map[jaegerModels.ProcessID]jaegerModels.Process{},
 		Warnings:  []string{},
 	}
-	for _, span := range trace.SpanSet.Spans {
+	// SpanSet is a pointer and Tempo leaves it unset for a trace it matched without reporting a
+	// span of it, so it is read through its getter rather than indexed into
+	for _, span := range trace.GetSpanSet().GetSpans() {
 		spanSet := convertOtelSpan(span, serviceName, trace.TraceID, trace.RootTraceName)
 		jaegerTrace.Spans = append(jaegerTrace.Spans, spanSet)
 	}
@@ -206,20 +210,106 @@ func convertAttributes(attributes []otelModels.Attribute, status otelModels.Stat
 	return tags
 }
 
+// convertModelAttributes reports the attributes of a span matched by Tempo's search API, as the
+// gRPC stream carries them, as Jaeger-shaped span tags.
+//
+// An OTLP attribute value is a oneof of seven variants, and Tempo's generated types declare all
+// seven. Reading it with GetStringValue alone answers the empty string for the other six, and
+// pinning the tag type to "string" then says that empty string is what the attribute holds.
 func convertModelAttributes(attributes []*v1.KeyValue) []jaegerModels.KeyValue {
 	var tags []jaegerModels.KeyValue
 	for _, atb := range attributes {
-		if atb.Key == "status" {
-			if atb.Value.GetStringValue() == "error" {
-				tag := jaegerModels.KeyValue{Key: "error", Value: true, Type: "bool"}
-				tags = append(tags, tag)
-			}
+		// the TraceQL status intrinsic, which prepareTraceQL selects, arrives as an attribute
+		// rather than as a span status, and Kiali's frontend reads a failed span as error=true
+		if atb.GetKey() == "status" && atb.GetValue().GetStringValue() == "error" {
+			tag := jaegerModels.KeyValue{Key: "error", Value: true, Type: jaegerModels.BoolType}
+			tags = append(tags, tag)
 		} else {
-			tag := jaegerModels.KeyValue{Key: atb.Key, Value: atb.Value.GetStringValue(), Type: "string"}
+			value, valueType := attributeValue(plainModelValue(atb.GetValue()))
+			tag := jaegerModels.KeyValue{Key: atb.GetKey(), Value: value, Type: valueType}
 			tags = append(tags, tag)
 		}
 	}
 	return tags
+}
+
+// attributeValue maps an OTLP attribute value, as plainModelValue returns it, onto a Jaeger tag
+// value and the tag type that describes it.
+//
+// The type is carried rather than stringified because the attribute arrives with it: OTLP states
+// which variant was written, Kiali's tag model has a field for it, and the same tag types are
+// what Kiali's Jaeger provider already reports for the same attributes.
+func attributeValue(value any) (any, jaegerModels.ValueType) {
+	switch plain := value.(type) {
+	case string:
+		return plain, jaegerModels.StringType
+	case bool:
+		return plain, jaegerModels.BoolType
+	case int64:
+		return plain, jaegerModels.Int64Type
+	case float64:
+		// Finite by construction: plainModelValue hands a non-finite double over as text, because one
+		// nested in an array or a map fails json.Marshal below.
+		return plain, jaegerModels.Float64Type
+	case []byte:
+		return plain, jaegerModels.BinaryType
+	case nil:
+		// no variant set at all, which is legal OTLP and says what a missing value says
+		return "", jaegerModels.StringType
+	default:
+		// an array or a map, which Jaeger's own OTLP translation renders as JSON as well
+		text, err := json.Marshal(plain)
+		if err != nil {
+			log.Errorf("Could not render an attribute value of type %T: %s", plain, err)
+			return "", jaegerModels.StringType
+		}
+		return string(text), jaegerModels.StringType
+	}
+}
+
+// plainModelValue returns an OTLP attribute value as a plain Go value, nested values included, and
+// nil when no variant of it is set.
+//
+// A double that is not a finite number comes back as its text rather than as a float64. JSON has no
+// literal for NaN or an infinity, so json.Marshal refuses the whole value such a double sits in: as
+// a float64, a single NaN inside an array costs that attribute every one of its elements.
+func plainModelValue(value *v1.AnyValue) any {
+	switch variant := value.GetValue().(type) {
+	case *v1.AnyValue_StringValue:
+		return variant.StringValue
+	case *v1.AnyValue_BoolValue:
+		return variant.BoolValue
+	case *v1.AnyValue_IntValue:
+		return variant.IntValue
+	case *v1.AnyValue_DoubleValue:
+		return finiteOrText(variant.DoubleValue)
+	case *v1.AnyValue_BytesValue:
+		return variant.BytesValue
+	case *v1.AnyValue_ArrayValue:
+		items := variant.ArrayValue.GetValues()
+		values := make([]any, 0, len(items))
+		for _, item := range items {
+			values = append(values, plainModelValue(item))
+		}
+		return values
+	case *v1.AnyValue_KvlistValue:
+		items := variant.KvlistValue.GetValues()
+		values := make(map[string]any, len(items))
+		for _, item := range items {
+			values[item.GetKey()] = plainModelValue(item.GetValue())
+		}
+		return values
+	}
+	return nil
+}
+
+// finiteOrText returns a double as itself, or as its text when it is NaN or an infinity, so that
+// the value can be written as JSON wherever it appears, nested or not.
+func finiteOrText(value float64) any {
+	if math.IsNaN(value) || math.IsInf(value, 0) {
+		return strconv.FormatFloat(value, 'g', -1, 64)
+	}
+	return value
 }
 
 func ConvertResource(resourceSpans *v11.Resource) jaegerModels.Span {
