@@ -24,6 +24,7 @@ import (
 	otelModel "github.com/kiali/kiali/tracing/otel/model"
 	"github.com/kiali/kiali/tracing/otel/model/converter"
 	otelJson "github.com/kiali/kiali/tracing/otel/model/json"
+	"github.com/kiali/kiali/tracing/otel/otlp"
 	"github.com/kiali/kiali/util"
 )
 
@@ -96,25 +97,26 @@ func (oc *OtelHTTPClient) GetTraceDetailHTTP(ctx context.Context, client http.Cl
 		return nil, errors.New("[HTTP Tempo] empty body response")
 	}
 
-	responseOtel, _ := unmarshalSingleTrace(ctx, resp, &u)
+	// Tempo's trace detail is OTLP under a key of its own naming.
+	traces, errDecode := otlp.Decode(resp, otlp.RootKeyBatches)
+	if errDecode != nil {
+		zl.Error().Msgf("[HTTP Tempo] Error reading the trace detail response: %s [URL: %v]", errDecode, u)
+		return nil, errDecode
+	}
 
-	response, err := convertSingleTrace(responseOtel, traceID)
-	if err != nil {
-		return nil, err
+	// A 200 carrying no span is a trace Tempo does not have, which the caller reports as not
+	// found. Reporting it as a trace with the requested ID and no spans shows an empty trace page
+	// instead.
+	trace := converter.TraceFromOTLP(traces)
+	if trace == nil {
+		return nil, nil
 	}
-	if len(response.Data) == 0 {
-		return &model.TracingSingleTrace{Errors: response.Errors}, nil
-	}
+
+	single := &model.TracingSingleTrace{Data: *trace}
 	if config.Get().ExternalServices.Tracing.TempoConfig.CacheEnabled {
-		oc.TempoCache.Set(traceID, &model.TracingSingleTrace{
-			Data:   response.Data[0],
-			Errors: response.Errors,
-		})
+		oc.TempoCache.Set(traceID, single)
 	}
-	return &model.TracingSingleTrace{
-		Data:   response.Data[0],
-		Errors: response.Errors,
-	}, nil
+	return single, nil
 }
 
 // GetServiceStatusHTTP get service status
@@ -256,16 +258,6 @@ func unmarshal(ctx context.Context, r []byte, u *url.URL) (*otelModel.Traces, er
 	return &response, nil
 }
 
-func unmarshalSingleTrace(ctx context.Context, r []byte, u *url.URL) (*otelJson.Data, error) {
-	var response otelJson.Data
-	if errMarshal := json.Unmarshal(r, &response); errMarshal != nil {
-		getLoggerFromContextHTTPTempo(ctx).Error().Msgf("[HTTP Tempo] Error unmarshalling Tempo API Single trace response: %s [URL: %v]", errMarshal, u)
-		return nil, errMarshal
-	}
-
-	return &response, nil
-}
-
 // convertBatchTrace Convert a trace returned by TraceQL query into a jaeger Trace
 func convertBatchTrace(trace otelModel.Trace, serviceName string) (jaegerModels.Trace, error) {
 
@@ -280,31 +272,6 @@ func convertBatchTrace(trace otelModel.Trace, serviceName string) (jaegerModels.
 	jaegerModel.Warnings = []string{}
 
 	return jaegerModel, nil
-}
-
-// convertSingleTrace Convert a single trace returned by the TraceQL search endpoint
-func convertSingleTrace(traces *otelJson.Data, id string) (*model.TracingResponse, error) {
-	var response model.TracingResponse
-	var jaegerModel jaegerModels.Trace
-	tracingServiceName := ""
-
-	jaegerModel.TraceID = converter.ConvertId(id)
-	if traces != nil {
-		tracingServiceName = getServiceName(traces.Batches[0].Resource.Attributes)
-		for _, batch := range traces.Batches {
-			serviceName := getServiceName(batch.Resource.Attributes)
-			jaegerModel.Spans = append(jaegerModel.Spans, converter.ConvertSpans(batch.ScopeSpans[0].Spans, serviceName, id)...)
-		}
-		jaegerModel.Matched = len(jaegerModel.Spans)
-		jaegerModel.Processes = map[jaegerModels.ProcessID]jaegerModels.Process{}
-		jaegerModel.Warnings = []string{}
-
-	}
-
-	response.Data = append(response.Data, jaegerModel)
-
-	response.TracingServiceName = tracingServiceName
-	return &response, nil
 }
 
 // prepareTraceQL set the query in TraceQL format

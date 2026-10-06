@@ -1,4 +1,5 @@
 import { GrafanaUrlProvider } from '../UrlProviders/Grafana';
+import type { SpanData } from 'types/TracingInfo';
 
 type ExploreFilter = {
   operator: string;
@@ -10,8 +11,10 @@ type ExploreFilter = {
 
 type ExplorePanes = {
   a: {
+    panelsState?: { trace: { spanId: string } };
     queries: Array<{
       filters: ExploreFilter[];
+      query: string;
     }>;
   };
 };
@@ -94,5 +97,26 @@ describe('GrafanaUrlProvider.AppSearchUrl', () => {
       value: ['true'],
       valueType: 'string'
     });
+  });
+});
+
+describe('GrafanaUrlProvider.SpanUrl', () => {
+  const provider = new GrafanaUrlProvider('http://grafana:3000', {
+    datasource_uid: 'tempo-uid',
+    orgID: '1'
+  });
+
+  it('names the span by the hex ID the backend reports', () => {
+    const span = {
+      spanID: 'f5b63fe67ee27431',
+      traceID: '3fed459787ea5c51070a19c4e6cd3040'
+    } as SpanData;
+
+    const panesParam = new URL(provider.SpanUrl(span)).searchParams.get('panes');
+    expect(panesParam).not.toBeNull();
+    const panes = JSON.parse(decodeURIComponent(panesParam!)) as ExplorePanes;
+
+    expect(panes.a.panelsState?.trace.spanId).toEqual('f5b63fe67ee27431');
+    expect(panes.a.queries[0].query).toEqual('3fed459787ea5c51070a19c4e6cd3040');
   });
 });
