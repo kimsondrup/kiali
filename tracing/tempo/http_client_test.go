@@ -113,7 +113,10 @@ func TestGetAmbientTraces(t *testing.T) {
 	assert.Equal(t, response.TracingServiceName, ambientServiceName)
 	assert.Nil(t, response.Errors)
 	assert.NotNil(t, response.Data)
-	assert.Equal(t, response.Data[0].TraceID, json.TraceID("2e299711ce47710289dc6640727404f"))
+	// Tempo answered this search with a 31 character trace ID, having stripped its leading zero.
+	// Kiali reports the full width, so that the search answer and the trace detail name the same
+	// trace.
+	assert.Equal(t, response.Data[0].TraceID, json.TraceID("02e299711ce47710289dc6640727404f"))
 	assert.Equal(t, len(response.Data[0].Spans), 4)
 	assert.Equal(t, response.Data[0].Spans[1].OperationName, "reviews.bookinfo.svc.cluster.local:9080/*")
 	assert.Equal(t, response.Data[0].Spans[1].Tags[2].Key, "node_id")
