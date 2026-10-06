@@ -197,16 +197,7 @@ func getDuration(end string, start string) (uint64, error) {
 		log.Errorf("Error converting start date: %s", err.Error())
 		return 0, err
 	}
-	// The subtraction is unsigned, and the OTLP proto only says that the end time is expected to
-	// be at or after the start time. An end before the start wraps the result round to several
-	// hundred years. A zero duration says the span's end cannot be believed and keeps the span,
-	// which is better than dropping it: it still carries its name, its service and its tags.
-	if endInt < startInt {
-		log.Warningf("Span end time [%d] is before its start time [%d], reporting a zero duration", endInt, startInt)
-		return 0, nil
-	}
-	// nano to micro
-	return (endInt - startInt) / 1000, nil
+	return durationMicros(startInt, endInt), nil
 }
 
 func convertReferences(traceId jaegerModels.TraceID, parentSpanId jaegerModels.SpanID) []jaegerModels.Reference {
