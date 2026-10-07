@@ -80,6 +80,20 @@ func TestDecodeOddPayloads(t *testing.T) {
 			resourceSpans: 1,
 			spans:         1,
 		},
+		// The two cases the hand-written model answered by dropping the span: an end time it
+		// could not parse left the span out of the trace and reported nothing. Tempo does not
+		// send either shape, so the value of pinning them is the direction of the answer, not
+		// the input: a timestamp that cannot be read is now the body's problem, not one span's.
+		"an end time that is empty": {
+			body:    `{"batches":[{"scopeSpans":[{"spans":[{"traceId":"ITLKoFymTIJFRgAoiyfztA==","spanId":"tTM6/ykz9cU=","name":"n","startTimeUnixNano":"1693389472310270000","endTimeUnixNano":""}]}]}]}`,
+			rootKey: RootKeyBatches,
+			wantErr: `invalid value for fixed64 field endTimeUnixNano`,
+		},
+		"an end time that is not a number": {
+			body:    `{"batches":[{"scopeSpans":[{"spans":[{"traceId":"ITLKoFymTIJFRgAoiyfztA==","spanId":"tTM6/ykz9cU=","name":"n","startTimeUnixNano":"1693389472310270000","endTimeUnixNano":"soon"}]}]}]}`,
+			rootKey: RootKeyBatches,
+			wantErr: `invalid value for fixed64 field endTimeUnixNano`,
+		},
 		"an object under a root key the transport did not name": {
 			body:    `{"metrics":{"inspectedBytes":"1234"},"trace":{"resourceSpans":[]}}`,
 			rootKey: RootKeyBatches,
