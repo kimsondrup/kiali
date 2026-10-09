@@ -166,6 +166,41 @@ func TestTraceIdIsTheSameOnBothTempoTransports(t *testing.T) {
 	}
 }
 
+// TestConvertTraceMetadataWithoutSpanSet covers the gRPC half of the same answer. Its span set is
+// a pointer, so a TraceSearchMetadata that carries none is a nil dereference rather than an empty
+// range - a SIGSEGV on the path every Tempo traces list takes, reached from processStream.
+func TestConvertTraceMetadataWithoutSpanSet(t *testing.T) {
+	converted, err := ConvertTraceMetadata(tempopb.TraceSearchMetadata{
+		TraceID:       "cafe9bc0903e18f6b914752f8ee577a5",
+		RootTraceName: "reviews.bookinfo.svc.cluster.local:9080/*",
+	}, "reviews.bookinfo")
+	require.NoError(t, err)
+	require.NotNil(t, converted)
+	assert.Equal(t, jaegerModels.TraceID("cafe9bc0903e18f6b914752f8ee577a5"), converted.TraceID)
+	assert.Equal(t, 0, converted.Matched)
+
+	// Both assertions are needed: a nil slice or map satisfies Empty as readily as an empty one,
+	// and it is the nil that serialises as JSON null and takes the Traces tab down.
+	assert.NotNil(t, converted.Spans)
+	assert.Empty(t, converted.Spans)
+	assert.NotNil(t, converted.Processes)
+	assert.Empty(t, converted.Processes)
+	assert.NotNil(t, converted.Warnings)
+	assert.Empty(t, converted.Warnings)
+}
+
+// TestConvertTraceMetadataWithAnEmptySpanSet covers the same answer written with the key present
+// and holding nothing, which is what Tempo's HTTP transport sends for such a trace.
+func TestConvertTraceMetadataWithAnEmptySpanSet(t *testing.T) {
+	converted, err := ConvertTraceMetadata(tempopb.TraceSearchMetadata{
+		TraceID: "cafe9bc0903e18f6b914752f8ee577a5",
+		SpanSet: &tempopb.SpanSet{},
+	}, "reviews.bookinfo")
+	require.NoError(t, err)
+	assert.NotNil(t, converted.Spans)
+	assert.Empty(t, converted.Spans)
+}
+
 // TestConvertAttributes covers the attributes of a span matched by Tempo's search API. They are
 // OTLP attributes embedded in a document that is not OTLP, and they reach Jaeger's typed
 // key-value through the same decision the trace detail path makes, so a port or a status code

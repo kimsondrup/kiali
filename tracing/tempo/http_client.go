@@ -204,7 +204,11 @@ func (oc *OtelHTTPClient) transformTrace(ctx context.Context, traces *otelModel.
 			if limit != 0 && i >= limit {
 				break
 			}
-			serviceName = getServiceName(trace.SpanSet.Spans[0].Attributes)
+			// a matched trace carries the spans that matched, and a trace that reports only its
+			// statistics carries none; the service name then stays whatever the last one gave
+			if len(trace.SpanSet.Spans) > 0 {
+				serviceName = getServiceName(trace.SpanSet.Spans[0].Attributes)
+			}
 			if error == "true" {
 				if !hasErrors(trace) {
 					continue
@@ -260,18 +264,12 @@ func unmarshal(ctx context.Context, r []byte, u *url.URL) (*otelModel.Traces, er
 
 // convertBatchTrace Convert a trace returned by TraceQL query into a jaeger Trace
 func convertBatchTrace(trace otelModel.Trace, serviceName string) (jaegerModels.Trace, error) {
-
-	var jaegerModel jaegerModels.Trace
-
-	jaegerModel.TraceID = converter.ConvertId(trace.TraceID)
+	var spans []jaegerModels.Span
 	for _, span := range trace.SpanSet.Spans {
-		jaegerModel.Spans = append(jaegerModel.Spans, converter.ConvertSpanSet(span, serviceName, trace.TraceID, trace.RootTraceName)...)
+		spans = append(spans, converter.ConvertSpanSet(span, serviceName, trace.TraceID, trace.RootTraceName)...)
 	}
-	jaegerModel.Matched = trace.SpanSet.Matched
-	jaegerModel.Processes = map[jaegerModels.ProcessID]jaegerModels.Process{}
-	jaegerModel.Warnings = []string{}
 
-	return jaegerModel, nil
+	return converter.SearchTrace(converter.ConvertId(trace.TraceID), spans, trace.SpanSet.Matched), nil
 }
 
 // prepareTraceQL set the query in TraceQL format

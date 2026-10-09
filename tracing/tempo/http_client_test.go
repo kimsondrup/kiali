@@ -439,6 +439,41 @@ func TestGetTracesErrorsOnly(t *testing.T) {
 		json.KeyValue{Key: "error", Value: true, Type: json.BoolType})
 }
 
+// TestGetTracesWithoutSpanSet covers a Tempo search answer that reports only its statistics.
+// Tempo 3.1 sends per-service statistics alongside a span set, so a trace with no matched spans
+// is a shape the backend can produce - and upstream reached SpanSet.Spans[0] for the service
+// name, which is a panic in a request handler rather than a missing span: the request is dropped
+// with a stack trace and the view never gets an answer at all.
+func TestGetTracesWithoutSpanSet(t *testing.T) {
+	baseUrl := getBaseUrl()
+
+	body := `{"traces":[{"traceID":"cafe9bc0903e18f6b914752f8ee577a5","spanSet":{}}],"metrics":{}}`
+
+	httpClient := http.Client{Transport: RoundTripFunc(func(req *http.Request) *http.Response {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(body)),
+		}
+	})}
+
+	tempoClient, err := NewOtelClient(context.TODO())
+	require.NoError(t, err)
+
+	response, err := tempoClient.GetAppTracesHTTP(context.Background(), httpClient, baseUrl, serviceName, models.TracingQuery{})
+	require.NoError(t, err)
+	require.Len(t, response.Data, 1)
+	assert.Equal(t, json.TraceID("cafe9bc0903e18f6b914752f8ee577a5"), response.Data[0].TraceID)
+
+	// Both assertions are needed: a nil slice or map satisfies Empty as readily as an empty one,
+	// and it is the nil that serialises as JSON null and takes the Traces tab down.
+	assert.NotNil(t, response.Data[0].Spans)
+	assert.Empty(t, response.Data[0].Spans)
+	assert.NotNil(t, response.Data[0].Processes)
+	assert.Empty(t, response.Data[0].Processes)
+	assert.NotNil(t, response.Data[0].Warnings)
+	assert.Empty(t, response.Data[0].Warnings)
+}
+
 // TestUnreadableSearchBody covers a 200 whose body is not a Tempo search answer, so a wrong
 // endpoint gives a meaningful error instead of an empty trace list.
 func TestUnreadableSearchBody(t *testing.T) {

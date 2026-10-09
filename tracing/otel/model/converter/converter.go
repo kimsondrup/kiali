@@ -36,18 +36,40 @@ func convertSpanId(id string) jaegerModels.SpanID {
 	return jaegerModels.SpanID(id)
 }
 
-// ConvertTraceMetadata used by the GRPC Client
-func ConvertTraceMetadata(trace tempopb.TraceSearchMetadata, serviceName string) (*jaegerModels.Trace, error) {
-	jaegerTrace := jaegerModels.Trace{
-		TraceID:   ConvertId(trace.TraceID),
+// SearchTrace assembles the Jaeger-shaped trace a Tempo search result becomes. Both of Tempo's
+// search transports end here, so the fields the frontend reads without checking are set in one
+// place rather than guarded at each call site.
+//
+// Spans, Processes and Warnings are set whether or not the result carried any spans. A nil slice
+// or map serialises as JSON null, and the frontend's transformTraceData reads all three without
+// checking, so a trace with no spans would take the Traces tab down with a TypeError instead of
+// rendering as an empty trace.
+func SearchTrace(traceID jaegerModels.TraceID, spans []jaegerModels.Span, matched int) jaegerModels.Trace {
+	if spans == nil {
+		spans = []jaegerModels.Span{}
+	}
+	return jaegerModels.Trace{
+		TraceID:   traceID,
+		Spans:     spans,
+		Matched:   matched,
 		Processes: map[jaegerModels.ProcessID]jaegerModels.Process{},
 		Warnings:  []string{},
 	}
-	for _, span := range trace.SpanSet.Spans {
-		spanSet := convertOtelSpan(span, serviceName, jaegerTrace.TraceID, trace.RootTraceName)
-		jaegerTrace.Spans = append(jaegerTrace.Spans, spanSet)
+}
+
+// ConvertTraceMetadata used by the GRPC Client
+func ConvertTraceMetadata(trace tempopb.TraceSearchMetadata, serviceName string) (*jaegerModels.Trace, error) {
+	traceID := ConvertId(trace.TraceID)
+
+	var spans []jaegerModels.Span
+	// A matched trace carries the spans that matched, and a trace reporting only its statistics
+	// carries no span set at all. The field is a pointer, so reaching into it is a nil
+	// dereference rather than an empty range.
+	for _, span := range trace.GetSpanSet().GetSpans() {
+		spans = append(spans, convertOtelSpan(span, serviceName, traceID, trace.RootTraceName))
 	}
-	jaegerTrace.Matched = len(jaegerTrace.Spans)
+
+	jaegerTrace := SearchTrace(traceID, spans, len(spans))
 	return &jaegerTrace, nil
 }
 
