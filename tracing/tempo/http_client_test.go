@@ -25,6 +25,8 @@ const (
 	responseTrace       = "../tracingtest/responseTrace.json"
 	responseMultiScope  = "../tracingtest/responseTraceMultiScope.json"
 	responseTypedAttrs  = "../tracingtest/responseTraceTypedAttrs.json"
+	responseTypedSearch = "../tracingtest/responseTypedSearch.json"
+	responseTypedErrors = "../tracingtest/responseTypedErrors.json"
 	tracingUrl          = "http://tracing.tempo"
 	serviceName         = "productpage.bookinfo"
 	ambientServiceName  = "waypoint.bookinfo"
@@ -311,6 +313,90 @@ func getTraceFromBody(t *testing.T, body string, traceID string) (*model.Tracing
 // The fourth trace's span carries no status attribute at all. That one is defensive rather than
 // measured: every span of every captured search response in ../tracingtest carries the
 // attribute, and a span that arrives without it has to read as a span that did not fail.
+// TestGetTypedSearchAttributes covers the attributes of a span Tempo's search API matched, which
+// are OTLP attributes embedded in a document that is not OTLP. Kiali used to declare the value as
+// one field, stringValue, so every int, bool, double, array and kvlist reached the UI with a key
+// and no value.
+//
+// Measured, Envoy writes every attribute as a stringValue - 3471 of 3471 on a mesh whose apps
+// export nothing - so this matters for a mesh with instrumented applications and changes nothing
+// on an Istio-only one. The fixture carries the typed forms a mesh like that sends.
+func TestGetTypedSearchAttributes(t *testing.T) {
+	baseUrl := getBaseUrl()
+
+	body, err := os.ReadFile(responseTypedSearch)
+	require.NoError(t, err)
+
+	httpClient := http.Client{Transport: RoundTripFunc(func(req *http.Request) *http.Response {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(string(body))),
+		}
+	})}
+
+	tempoClient, err := NewOtelClient(context.TODO())
+	require.NoError(t, err)
+
+	response, err := tempoClient.GetAppTracesHTTP(context.Background(), httpClient, baseUrl, "typeprobe.devex", models.TracingQuery{})
+	require.NoError(t, err)
+	require.Len(t, response.Data, 1)
+	require.Len(t, response.Data[0].Spans, 2)
+
+	// getServiceName reads the matched span's service.name through the same bridge, and it is the
+	// span's process that carries the answer: TracingServiceName is overwritten by the caller
+	// with the service that was queried, so it cannot report whether the bridge worked.
+	require.NotNil(t, response.Data[0].Spans[0].Process)
+	assert.Equal(t, "typeprobe.devex", response.Data[0].Spans[0].Process.ServiceName)
+
+	tags := map[string]json.KeyValue{}
+	for _, tag := range response.Data[0].Spans[0].Tags {
+		tags[tag.Key] = tag
+	}
+	assert.Equal(t, json.KeyValue{Key: "component", Value: int64(7), Type: json.Int64Type}, tags["component"])
+	assert.Equal(t, json.KeyValue{Key: "response_flags", Value: true, Type: json.BoolType}, tags["response_flags"])
+	assert.Equal(t, json.KeyValue{Key: "http.method", Value: "GET", Type: json.StringType}, tags["http.method"])
+	// the "status" attribute is the TraceQL intrinsic, folded into the tag Kiali's frontend reads
+	assert.Equal(t, json.KeyValue{Key: "error", Value: true, Type: json.BoolType}, tags["error"])
+	assert.NotContains(t, tags, "status")
+
+	// the second span did not fail, so it carries the intrinsic as its own tag and no error tag
+	ok := map[string]json.KeyValue{}
+	for _, tag := range response.Data[0].Spans[1].Tags {
+		ok[tag.Key] = tag
+	}
+	assert.Equal(t, json.KeyValue{Key: "status", Value: "ok", Type: json.StringType}, ok["status"])
+	assert.NotContains(t, ok, "error")
+}
+
+// TestGetTracesErrorsOnlyFromFixture covers the Errors only filter over a captured search answer
+// rather than an inline body, so the shape the filter reads is the shape a backend sent.
+func TestGetTracesErrorsOnlyFromFixture(t *testing.T) {
+	baseUrl := getBaseUrl()
+
+	body, err := os.ReadFile(responseTypedErrors)
+	require.NoError(t, err)
+
+	httpClient := http.Client{Transport: RoundTripFunc(func(req *http.Request) *http.Response {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(string(body))),
+		}
+	})}
+
+	tempoClient, err := NewOtelClient(context.TODO())
+	require.NoError(t, err)
+
+	failed, err := tempoClient.GetAppTracesHTTP(context.Background(), httpClient, baseUrl, "errorprobe.devex",
+		models.TracingQuery{Tags: map[string]string{"error": "true"}})
+	require.NoError(t, err)
+	require.Len(t, failed.Data, 1)
+	// Tempo stripped the leading zeros of this trace ID down to 29 characters
+	assert.Equal(t, json.TraceID("000e0e0e0e0e0e0e0e0e0e0e0e0e0e01"), failed.Data[0].TraceID)
+	require.Len(t, failed.Data[0].Spans, 2)
+	assert.Contains(t, failed.Data[0].Spans[0].Tags,
+		json.KeyValue{Key: "error", Value: true, Type: json.BoolType})
+}
+
 func TestGetTracesErrorsOnly(t *testing.T) {
 	baseUrl := getBaseUrl()
 

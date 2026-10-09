@@ -4,10 +4,11 @@ import (
 	"strconv"
 	"strings"
 
+	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
+
 	"github.com/kiali/kiali/log"
 	jaegerModels "github.com/kiali/kiali/tracing/jaeger/model/json"
 	otel "github.com/kiali/kiali/tracing/otel/model"
-	otelModels "github.com/kiali/kiali/tracing/otel/model/json"
 	"github.com/kiali/kiali/tracing/tempo/tempopb"
 	v1 "github.com/kiali/kiali/tracing/tempo/tempopb/common/v1"
 	v11 "github.com/kiali/kiali/tracing/tempo/tempopb/resource/v1"
@@ -130,7 +131,7 @@ func ConvertSpanSet(span otel.Span, serviceName string, traceId string, rootName
 		Flags: 0,
 		// OperationName: span.Name,
 		References:    []jaegerModels.Reference{},
-		Tags:          convertAttributes(span.Attributes),
+		Tags:          convertAttributes(span.Attributes, jaegerSpanId),
 		Logs:          []jaegerModels.Log{},
 		OperationName: operationName,
 		ProcessID:     "",
@@ -148,17 +149,21 @@ func ConvertSpanSet(span otel.Span, serviceName string, traceId string, rootName
 // There is no status to report alongside them: Tempo writes no span-level status on this path,
 // and the status it does report arrives as the "status" attribute below. The span status is a
 // real thing on the trace detail path, where the response is OTLP and statusTags reads it.
-func convertAttributes(attributes []otelModels.Attribute) []jaegerModels.KeyValue {
+func convertAttributes(attributes []*commonpb.KeyValue, spanID jaegerModels.SpanID) []jaegerModels.KeyValue {
 	var tags []jaegerModels.KeyValue
+	var unread []string
 	for _, atb := range attributes {
-		if atb.Key == "status" && atb.Value.StringValue == "error" {
-			tag := jaegerModels.KeyValue{Key: "error", Value: true, Type: "bool"}
-			tags = append(tags, tag)
-		} else {
-			tag := jaegerModels.KeyValue{Key: atb.Key, Value: atb.Value.StringValue, Type: "string"}
-			tags = append(tags, tag)
+		if atb.GetKey() == "status" && atb.GetValue().GetStringValue() == "error" {
+			tags = append(tags, jaegerModels.KeyValue{Key: "error", Value: true, Type: jaegerModels.BoolType})
+			continue
 		}
+		tag, cannotRead := keyValueFromAttribute(atb)
+		if cannotRead {
+			unread = append(unread, atb.GetKey())
+		}
+		tags = append(tags, tag)
 	}
+	warnUnreadVariants("span "+string(spanID), unread)
 	return tags
 }
 

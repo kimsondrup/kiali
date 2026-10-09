@@ -1,15 +1,21 @@
 package converter
 
 import (
+	"bytes"
+	"math"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
+
+	zlog "github.com/rs/zerolog/log"
+
 	jaegerModels "github.com/kiali/kiali/tracing/jaeger/model/json"
 	otel "github.com/kiali/kiali/tracing/otel/model"
-	otelModels "github.com/kiali/kiali/tracing/otel/model/json"
 	"github.com/kiali/kiali/tracing/tempo/tempopb"
 )
 
@@ -160,6 +166,114 @@ func TestTraceIdIsTheSameOnBothTempoTransports(t *testing.T) {
 	}
 }
 
+// TestConvertAttributes covers the attributes of a span matched by Tempo's search API. They are
+// OTLP attributes embedded in a document that is not OTLP, and they reach Jaeger's typed
+// key-value through the same decision the trace detail path makes, so a port or a status code
+// arrives as the number it is rather than as an empty string.
+func TestConvertAttributes(t *testing.T) {
+	cases := map[string]struct {
+		value     *commonpb.AnyValue
+		wantValue any
+		wantType  jaegerModels.ValueType
+	}{
+		"a string": {
+			value:     &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "HTTP/1.1"}},
+			wantValue: "HTTP/1.1", wantType: jaegerModels.StringType,
+		},
+		"an int": {
+			value:     &commonpb.AnyValue{Value: &commonpb.AnyValue_IntValue{IntValue: 503}},
+			wantValue: int64(503), wantType: jaegerModels.Int64Type,
+		},
+		"a bool": {
+			value:     &commonpb.AnyValue{Value: &commonpb.AnyValue_BoolValue{BoolValue: true}},
+			wantValue: true, wantType: jaegerModels.BoolType,
+		},
+		"a double": {
+			value:     &commonpb.AnyValue{Value: &commonpb.AnyValue_DoubleValue{DoubleValue: 1.5}},
+			wantValue: 1.5, wantType: jaegerModels.Float64Type,
+		},
+		"a double that is not a number": {
+			value:     &commonpb.AnyValue{Value: &commonpb.AnyValue_DoubleValue{DoubleValue: math.NaN()}},
+			wantValue: "NaN", wantType: jaegerModels.StringType,
+		},
+		"bytes": {
+			value:     &commonpb.AnyValue{Value: &commonpb.AnyValue_BytesValue{BytesValue: []byte{10, 0, 0, 1}}},
+			wantValue: []byte{10, 0, 0, 1}, wantType: jaegerModels.BinaryType,
+		},
+		"an array": {
+			value: &commonpb.AnyValue{Value: &commonpb.AnyValue_ArrayValue{ArrayValue: &commonpb.ArrayValue{
+				Values: []*commonpb.AnyValue{{Value: &commonpb.AnyValue_StringValue{StringValue: "*/*"}}},
+			}}},
+			wantValue: `["*/*"]`, wantType: jaegerModels.StringType,
+		},
+		"a map": {
+			value: &commonpb.AnyValue{Value: &commonpb.AnyValue_KvlistValue{KvlistValue: &commonpb.KeyValueList{
+				Values: []*commonpb.KeyValue{{Key: "k", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_IntValue{IntValue: 7}}}},
+			}}},
+			wantValue: `{"k":7}`, wantType: jaegerModels.StringType,
+		},
+		"no variant set":  {value: &commonpb.AnyValue{}, wantValue: "", wantType: jaegerModels.StringType},
+		"no value at all": {wantValue: "", wantType: jaegerModels.StringType},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			tags := convertAttributes([]*commonpb.KeyValue{{Key: "k", Value: tc.value}}, "2e6ca056f5fc6fdc")
+			require.Len(t, tags, 1)
+			assert.Equal(t, jaegerModels.KeyValue{Key: "k", Value: tc.wantValue, Type: tc.wantType}, tags[0])
+		})
+	}
+}
+
+// TestConvertAttributesStatus covers the "status" attribute, which is the TraceQL status intrinsic
+// prepareTraceQL selects rather than an attribute of the span. A matched span that failed reports
+// the boolean tag Kiali's frontend reads; any other value of it is an ordinary tag.
+func TestConvertAttributesStatus(t *testing.T) {
+	text := func(value string) *commonpb.AnyValue {
+		return &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: value}}
+	}
+
+	failed := convertAttributes([]*commonpb.KeyValue{{Key: "status", Value: text("error")}}, "2e6ca056f5fc6fdc")
+	assert.Equal(t, []jaegerModels.KeyValue{{Key: "error", Value: true, Type: jaegerModels.BoolType}}, failed)
+
+	for _, value := range []string{"ok", "unset"} {
+		tags := convertAttributes([]*commonpb.KeyValue{{Key: "status", Value: text(value)}}, "2e6ca056f5fc6fdc")
+		assert.Equal(t, []jaegerModels.KeyValue{{Key: "status", Value: value, Type: jaegerModels.StringType}}, tags)
+	}
+}
+
+// TestConvertAttributesNamesAnUnreadVariant covers an attribute of a matched span whose value was
+// written as a variant this build cannot read. The key is kept so the span still says the
+// attribute was there, and the reason is logged once per span, naming the span so it can be found
+// in Grafana.
+func TestConvertAttributesNamesAnUnreadVariant(t *testing.T) {
+	strindex := &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValueStrindex{StringValueStrindex: 3}}
+
+	logged := &bytes.Buffer{}
+	restore := zlog.Logger
+	zlog.Logger = zlog.Logger.Output(logged)
+	defer func() { zlog.Logger = restore }()
+
+	tags := convertAttributes([]*commonpb.KeyValue{
+		{Key: "probe.strindex", Value: strindex},
+		{Key: "http.method", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "GET"}}},
+		{Key: "probe.other", Value: strindex},
+		// An unset value is legal OTLP and must not be warned about.
+		{Key: "probe.unset", Value: &commonpb.AnyValue{}},
+	}, "2e6ca056f5fc6fdc")
+
+	require.Len(t, tags, 4)
+	assert.Equal(t, jaegerModels.KeyValue{Key: "probe.strindex", Value: "", Type: jaegerModels.StringType}, tags[0])
+	assert.Equal(t, jaegerModels.KeyValue{Key: "http.method", Value: "GET", Type: jaegerModels.StringType}, tags[1])
+
+	text := logged.String()
+	assert.Equal(t, 1, strings.Count(text, "Could not read the value of attribute(s)"), text)
+	assert.Contains(t, text, "probe.strindex, probe.other")
+	assert.Contains(t, text, "span 2e6ca056f5fc6fdc")
+	assert.NotContains(t, text, "probe.unset")
+	assert.NotContains(t, text, "http.method")
+}
+
 // TestConvertSpanSetNoStartTime covers a span that Tempo's search API answers with and that carries
 // no start time. Reported with a start time of zero it is dated to the Unix epoch; ConvertSpans
 // drops such a span on the trace detail path, and this is the same rule on the path that feeds the
@@ -179,15 +293,4 @@ func TestConvertSpanSetNoStartTime(t *testing.T) {
 func getId() string {
 	id := "727a0d200236314473666c051e6f65f4"
 	return id
-}
-
-func getAttributes() []otelModels.Attribute {
-	var attbs []otelModels.Attribute
-	atb1 := otelModels.Attribute{Key: "guid:x-request-id", Value: otelModels.ValueString{StringValue: "48c7189e-1e39-9984-9556-20a8f2e8be45"}}
-	atb2 := otelModels.Attribute{Key: "ttp.protocol\"", Value: otelModels.ValueString{StringValue: "HTTP/1.1"}}
-
-	attbs = append(attbs, atb1)
-	attbs = append(attbs, atb2)
-
-	return attbs
 }

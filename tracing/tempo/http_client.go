@@ -23,7 +23,6 @@ import (
 	"github.com/kiali/kiali/tracing/otel"
 	otelModel "github.com/kiali/kiali/tracing/otel/model"
 	"github.com/kiali/kiali/tracing/otel/model/converter"
-	otelJson "github.com/kiali/kiali/tracing/otel/model/json"
 	"github.com/kiali/kiali/tracing/otel/otlp"
 	"github.com/kiali/kiali/util"
 )
@@ -344,7 +343,7 @@ func (oc *OtelHTTPClient) GetTraceQLQuery(ctx context.Context, u *url.URL, traci
 func hasErrors(trace otelModel.Trace) bool {
 	for _, span := range trace.SpanSet.Spans {
 		for _, atb := range span.Attributes {
-			if atb.Key == "status" && atb.Value.StringValue == "error" {
+			if atb.GetKey() == "status" && atb.GetValue().GetStringValue() == "error" {
 				return true
 			}
 		}
@@ -352,10 +351,10 @@ func hasErrors(trace otelModel.Trace) bool {
 	return false
 }
 
-func getServiceName(attributes []otelJson.Attribute) string {
+func getServiceName(attributes otlp.Attributes) string {
 	for _, attb := range attributes {
-		if attb.Key == "service.name" {
-			return attb.Value.StringValue
+		if attb.GetKey() == "service.name" {
+			return attb.GetValue().GetStringValue()
 		}
 	}
 	return ""
