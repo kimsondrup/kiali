@@ -21,6 +21,22 @@ func TestConvertId(t *testing.T) {
 	assert.Equal(jaegerModels.TraceID(id), jaegerId)
 }
 
+// TestConvertIdPadsTempoId covers the trace IDs Tempo answers a search with, which it strips the
+// leading zeros of. Tempo serves the detail of a padded ID as readily as of an unpadded one -
+// measured, both answer 200 for the same trace - so the padded form is the one Kiali carries.
+func TestConvertIdPadsTempoId(t *testing.T) {
+	for name, tc := range map[string]struct{ id, expected string }{
+		"a full width id":            {id: "b70b02766cb83333631f6654cc518265", expected: "b70b02766cb83333631f6654cc518265"},
+		"one leading zero gone":      {id: "b70b02766cb83333631f6654cc51826", expected: "0b70b02766cb83333631f6654cc51826"},
+		"several leading zeros":      {id: "b70b02766cb83333631f6654cc5", expected: "00000b70b02766cb83333631f6654cc5"},
+		"a 64 bit id, zero extended": {id: "631f6654cc518265", expected: "0000000000000000631f6654cc518265"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			assert.Equal(t, jaegerModels.TraceID(tc.expected), ConvertId(tc.id))
+		})
+	}
+}
+
 func TestConvertSpanId(t *testing.T) {
 	assert := assert.New(t)
 
@@ -95,6 +111,51 @@ func TestConvertTraceMetadataDuration(t *testing.T) {
 			require.NoError(t, err)
 			require.Len(t, converted.Spans, 1)
 			assert.Equal(t, tc.expectedDuration, converted.Spans[0].Duration)
+		})
+	}
+}
+
+// TestTraceIdIsTheSameOnBothTempoTransports covers the trace ID Tempo answers a search with, which
+// reaches the browser twice over: as the ID of the trace and as the ID its spans carry. The two
+// drive different things - the spans' one is what a click on a span navigates with, the trace's one
+// is what the trace detail is then compared against - so an unpadded ID in either place makes one
+// trace into two, and the gRPC transport has to pad both to agree with the HTTP one.
+func TestTraceIdIsTheSameOnBothTempoTransports(t *testing.T) {
+	// A 31 character ID is Tempo's own answer, not a malformed one: it strips the leading zeros of
+	// every trace ID it reports, so roughly one search result in sixteen arrives a character short.
+	for name, tc := range map[string]struct{ id, expected string }{
+		"a full width id":       {id: "b70b02766cb83333631f6654cc518265", expected: "b70b02766cb83333631f6654cc518265"},
+		"one leading zero gone": {id: "2e299711ce47710289dc6640727404f", expected: "02e299711ce47710289dc6640727404f"},
+		"several leading zeros": {id: "b70b02766cb83333631f6654cc5", expected: "00000b70b02766cb83333631f6654cc5"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			trace := tempopb.TraceSearchMetadata{
+				TraceID:       tc.id,
+				RootTraceName: "reviews.bookinfo.svc.cluster.local:9080/*",
+				SpanSet: &tempopb.SpanSet{
+					Spans: []*tempopb.Span{{
+						SpanID:            "2e6ca056f5fc6fdc",
+						Name:              "reviews.bookinfo.svc.cluster.local:9080/*",
+						StartTimeUnixNano: 1693389472310270000,
+						DurationNanos:     646000,
+					}},
+				},
+			}
+
+			overGRPC, err := ConvertTraceMetadata(trace, "reviews.bookinfo")
+			require.NoError(t, err)
+			require.Len(t, overGRPC.Spans, 1)
+			assert.Equal(t, jaegerModels.TraceID(tc.expected), overGRPC.TraceID)
+			assert.Equal(t, overGRPC.TraceID, overGRPC.Spans[0].TraceID)
+
+			overHTTP := ConvertSpanSet(otel.Span{
+				SpanID:            "2e6ca056f5fc6fdc",
+				StartTimeUnixNano: "1693389472310270000",
+				DurationNanos:     "646000",
+				Name:              "reviews.bookinfo.svc.cluster.local:9080/*",
+			}, "reviews.bookinfo", tc.id, "root")
+			require.Len(t, overHTTP, 1)
+			assert.Equal(t, overHTTP[0].TraceID, overGRPC.Spans[0].TraceID)
 		})
 	}
 }
