@@ -1,0 +1,1285 @@
+{
+  "result": {
+    "resourceSpans": [
+      {
+        "resource": {
+          "attributes": [
+            {
+              "key": "service.name",
+              "value": {
+                "stringValue": "podinfo.tp-otlp-sf2ed7.svc.cluster.local"
+              }
+            },
+            {
+              "key": "service.version",
+              "value": {
+                "stringValue": "6.9.2"
+              }
+            }
+          ]
+        },
+        "scopeSpans": [
+          {
+            "scope": {
+              "name": "github.com/stefanprodan/podinfo/pkg/api",
+              "version": "6.9.2"
+            },
+            "spans": [
+              {
+                "traceId": "d589cf359dfd4c0f70f68e501d8df307",
+                "spanId": "5b0b8260850bf349",
+                "parentSpanId": "21731dd441721aba",
+                "flags": 256,
+                "name": "statusHandler",
+                "kind": 1,
+                "startTimeUnixNano": "1791294832185828793",
+                "endTimeUnixNano": "1791294832185845826",
+                "status": {}
+              }
+            ]
+          },
+          {
+            "scope": {
+              "name": "go.opentelemetry.io/contrib/instrumentation/github.com/gorilla/mux/otelmux",
+              "version": "0.63.0"
+            },
+            "spans": [
+              {
+                "traceId": "d589cf359dfd4c0f70f68e501d8df307",
+                "spanId": "21731dd441721aba",
+                "parentSpanId": "5b2754180ccf3b71",
+                "flags": 768,
+                "name": "GET /status/{code:[0-9]+}",
+                "kind": 2,
+                "startTimeUnixNano": "1791294832185815508",
+                "endTimeUnixNano": "1791294832185937971",
+                "attributes": [
+                  {
+                    "key": "client.address",
+                    "value": {
+                      "stringValue": "10.244.1.134"
+                    }
+                  },
+                  {
+                    "key": "http.request.method",
+                    "value": {
+                      "stringValue": "GET"
+                    }
+                  },
+                  {
+                    "key": "http.response.body.size",
+                    "value": {
+                      "intValue": "19"
+                    }
+                  },
+                  {
+                    "key": "http.response.status_code",
+                    "value": {
+                      "intValue": "500"
+                    }
+                  },
+                  {
+                    "key": "http.route",
+                    "value": {
+                      "stringValue": "/status/{code:[0-9]+}"
+                    }
+                  },
+                  {
+                    "key": "network.peer.address",
+                    "value": {
+                      "stringValue": "10.244.1.134"
+                    }
+                  },
+                  {
+                    "key": "network.peer.port",
+                    "value": {
+                      "intValue": "40111"
+                    }
+                  },
+                  {
+                    "key": "network.protocol.version",
+                    "value": {
+                      "stringValue": "1.1"
+                    }
+                  },
+                  {
+                    "key": "server.address",
+                    "value": {
+                      "stringValue": "podinfo.tp-otlp-sf2ed7.svc.cluster.local"
+                    }
+                  },
+                  {
+                    "key": "server.port",
+                    "value": {
+                      "intValue": "9898"
+                    }
+                  },
+                  {
+                    "key": "url.path",
+                    "value": {
+                      "stringValue": "/status/500"
+                    }
+                  },
+                  {
+                    "key": "url.scheme",
+                    "value": {
+                      "stringValue": "http"
+                    }
+                  },
+                  {
+                    "key": "user_agent.original",
+                    "value": {
+                      "stringValue": "curl/8.22.0"
+                    }
+                  }
+                ],
+                "status": {
+                  "code": 2
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "resource": {
+          "attributes": [
+            {
+              "key": "service.name",
+              "value": {
+                "stringValue": "waypoint.tp-otlp-sf2ed7"
+              }
+            },
+            {
+              "key": "telemetry.sdk.language",
+              "value": {
+                "stringValue": "cpp"
+              }
+            },
+            {
+              "key": "telemetry.sdk.name",
+              "value": {
+                "stringValue": "envoy"
+              }
+            },
+            {
+              "key": "telemetry.sdk.version",
+              "value": {
+                "stringValue": "3bb16354647d089b9a79020c9fc86cbbc5fcf84b/1.39.2-dev/Clean/RELEASE/BoringSSL"
+              }
+            }
+          ]
+        },
+        "scopeSpans": [
+          {
+            "scope": {
+              "name": "envoy",
+              "version": "3bb16354647d089b9a79020c9fc86cbbc5fcf84b/1.39.2-dev/Clean/RELEASE/BoringSSL"
+            },
+            "spans": [
+              {
+                "traceId": "d589cf359dfd4c0f70f68e501d8df307",
+                "spanId": "5b2754180ccf3b71",
+                "name": "podinfo.tp-otlp-sf2ed7.svc.cluster.local:9898/*",
+                "kind": 2,
+                "startTimeUnixNano": "1791294832185064000",
+                "endTimeUnixNano": "1791294832186321000",
+                "attributes": [
+                  {
+                    "key": "component",
+                    "value": {
+                      "stringValue": "proxy"
+                    }
+                  },
+                  {
+                    "key": "downstream_cluster",
+                    "value": {
+                      "stringValue": "-"
+                    }
+                  },
+                  {
+                    "key": "error",
+                    "value": {
+                      "stringValue": "true"
+                    }
+                  },
+                  {
+                    "key": "guid:x-request-id",
+                    "value": {
+                      "stringValue": "4ac24153-2794-92f7-b854-a99a96712e6a"
+                    }
+                  },
+                  {
+                    "key": "http.method",
+                    "value": {
+                      "stringValue": "GET"
+                    }
+                  },
+                  {
+                    "key": "http.protocol",
+                    "value": {
+                      "stringValue": "HTTP/1.1"
+                    }
+                  },
+                  {
+                    "key": "http.status_code",
+                    "value": {
+                      "stringValue": "500"
+                    }
+                  },
+                  {
+                    "key": "http.url",
+                    "value": {
+                      "stringValue": "http://podinfo:9898/status/500"
+                    }
+                  },
+                  {
+                    "key": "istio.canonical_revision",
+                    "value": {
+                      "stringValue": "latest"
+                    }
+                  },
+                  {
+                    "key": "istio.canonical_service",
+                    "value": {
+                      "stringValue": "waypoint"
+                    }
+                  },
+                  {
+                    "key": "istio.cluster_id",
+                    "value": {
+                      "stringValue": "cluster1"
+                    }
+                  },
+                  {
+                    "key": "istio.destination_app",
+                    "value": {
+                      "stringValue": "podinfo"
+                    }
+                  },
+                  {
+                    "key": "istio.destination_app_version",
+                    "value": {
+                      "stringValue": "v1"
+                    }
+                  },
+                  {
+                    "key": "istio.destination_canonical_revision",
+                    "value": {
+                      "stringValue": "v1"
+                    }
+                  },
+                  {
+                    "key": "istio.destination_canonical_service",
+                    "value": {
+                      "stringValue": "podinfo"
+                    }
+                  },
+                  {
+                    "key": "istio.destination_cluster_id",
+                    "value": {
+                      "stringValue": "cluster1"
+                    }
+                  },
+                  {
+                    "key": "istio.destination_instance_name",
+                    "value": {
+                      "stringValue": "podinfo-5488f864c9-95zt7"
+                    }
+                  },
+                  {
+                    "key": "istio.destination_namespace",
+                    "value": {
+                      "stringValue": "tp-otlp-sf2ed7"
+                    }
+                  },
+                  {
+                    "key": "istio.destination_workload",
+                    "value": {
+                      "stringValue": "podinfo"
+                    }
+                  },
+                  {
+                    "key": "istio.destination_workload_type",
+                    "value": {
+                      "stringValue": "pod"
+                    }
+                  },
+                  {
+                    "key": "istio.mesh_id",
+                    "value": {
+                      "stringValue": "cluster.local"
+                    }
+                  },
+                  {
+                    "key": "istio.namespace",
+                    "value": {
+                      "stringValue": "tp-otlp-sf2ed7"
+                    }
+                  },
+                  {
+                    "key": "istio.source_app",
+                    "value": {
+                      "stringValue": "client"
+                    }
+                  },
+                  {
+                    "key": "istio.source_app_version",
+                    "value": {
+                      "stringValue": "v1"
+                    }
+                  },
+                  {
+                    "key": "istio.source_canonical_revision",
+                    "value": {
+                      "stringValue": "v1"
+                    }
+                  },
+                  {
+                    "key": "istio.source_canonical_service",
+                    "value": {
+                      "stringValue": "client"
+                    }
+                  },
+                  {
+                    "key": "istio.source_cluster_id",
+                    "value": {
+                      "stringValue": "cluster1"
+                    }
+                  },
+                  {
+                    "key": "istio.source_instance_name",
+                    "value": {
+                      "stringValue": "client-96d57bbcf-md9bn"
+                    }
+                  },
+                  {
+                    "key": "istio.source_namespace",
+                    "value": {
+                      "stringValue": "tp-otlp-sf2ed7"
+                    }
+                  },
+                  {
+                    "key": "istio.source_workload",
+                    "value": {
+                      "stringValue": "client"
+                    }
+                  },
+                  {
+                    "key": "istio.source_workload_type",
+                    "value": {
+                      "stringValue": "pod"
+                    }
+                  },
+                  {
+                    "key": "node_id",
+                    "value": {
+                      "stringValue": "waypoint~10.244.1.134~waypoint-59c95cb7c9-rpr2h.tp-otlp-sf2ed7~tp-otlp-sf2ed7.svc.cluster.local"
+                    }
+                  },
+                  {
+                    "key": "peer.address",
+                    "value": {
+                      "stringValue": "envoy://internal_client_address/"
+                    }
+                  },
+                  {
+                    "key": "request_size",
+                    "value": {
+                      "stringValue": "0"
+                    }
+                  },
+                  {
+                    "key": "response_flags",
+                    "value": {
+                      "stringValue": "-"
+                    }
+                  },
+                  {
+                    "key": "response_size",
+                    "value": {
+                      "stringValue": "19"
+                    }
+                  },
+                  {
+                    "key": "upstream_cluster",
+                    "value": {
+                      "stringValue": "inbound-vip|9898|http|podinfo.tp-otlp-sf2ed7.svc.cluster.local"
+                    }
+                  },
+                  {
+                    "key": "upstream_cluster.name",
+                    "value": {
+                      "stringValue": "inbound-vip|9898|http|podinfo.tp-otlp-sf2ed7.svc.cluster.local;"
+                    }
+                  },
+                  {
+                    "key": "user_agent",
+                    "value": {
+                      "stringValue": "curl/8.22.0"
+                    }
+                  },
+                  {
+                    "key": "zone",
+                    "value": {
+                      "stringValue": ""
+                    }
+                  }
+                ],
+                "status": {
+                  "code": 2
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "resource": {
+          "attributes": [
+            {
+              "key": "service.name",
+              "value": {
+                "stringValue": "waypoint.tp-otlp-sf2ed7"
+              }
+            },
+            {
+              "key": "telemetry.sdk.language",
+              "value": {
+                "stringValue": "cpp"
+              }
+            },
+            {
+              "key": "telemetry.sdk.name",
+              "value": {
+                "stringValue": "envoy"
+              }
+            },
+            {
+              "key": "telemetry.sdk.version",
+              "value": {
+                "stringValue": "3bb16354647d089b9a79020c9fc86cbbc5fcf84b/1.39.2-dev/Clean/RELEASE/BoringSSL"
+              }
+            }
+          ]
+        },
+        "scopeSpans": [
+          {
+            "scope": {
+              "name": "envoy",
+              "version": "3bb16354647d089b9a79020c9fc86cbbc5fcf84b/1.39.2-dev/Clean/RELEASE/BoringSSL"
+            },
+            "spans": [
+              {
+                "traceId": "a999b181dcef7e89335c110d4a7ea6fe",
+                "spanId": "662648bf4b02d39b",
+                "name": "podinfo.tp-otlp-sf2ed7.svc.cluster.local:9898/*",
+                "kind": 2,
+                "startTimeUnixNano": "1791294830131060000",
+                "endTimeUnixNano": "1791294831133257000",
+                "attributes": [
+                  {
+                    "key": "component",
+                    "value": {
+                      "stringValue": "proxy"
+                    }
+                  },
+                  {
+                    "key": "downstream_cluster",
+                    "value": {
+                      "stringValue": "-"
+                    }
+                  },
+                  {
+                    "key": "guid:x-request-id",
+                    "value": {
+                      "stringValue": "69c9e956-de3e-96be-8fee-04eb664930d5"
+                    }
+                  },
+                  {
+                    "key": "http.method",
+                    "value": {
+                      "stringValue": "GET"
+                    }
+                  },
+                  {
+                    "key": "http.protocol",
+                    "value": {
+                      "stringValue": "HTTP/1.1"
+                    }
+                  },
+                  {
+                    "key": "http.status_code",
+                    "value": {
+                      "stringValue": "200"
+                    }
+                  },
+                  {
+                    "key": "http.url",
+                    "value": {
+                      "stringValue": "http://podinfo:9898/delay/1"
+                    }
+                  },
+                  {
+                    "key": "istio.canonical_revision",
+                    "value": {
+                      "stringValue": "latest"
+                    }
+                  },
+                  {
+                    "key": "istio.canonical_service",
+                    "value": {
+                      "stringValue": "waypoint"
+                    }
+                  },
+                  {
+                    "key": "istio.cluster_id",
+                    "value": {
+                      "stringValue": "cluster1"
+                    }
+                  },
+                  {
+                    "key": "istio.destination_app",
+                    "value": {
+                      "stringValue": "podinfo"
+                    }
+                  },
+                  {
+                    "key": "istio.destination_app_version",
+                    "value": {
+                      "stringValue": "v1"
+                    }
+                  },
+                  {
+                    "key": "istio.destination_canonical_revision",
+                    "value": {
+                      "stringValue": "v1"
+                    }
+                  },
+                  {
+                    "key": "istio.destination_canonical_service",
+                    "value": {
+                      "stringValue": "podinfo"
+                    }
+                  },
+                  {
+                    "key": "istio.destination_cluster_id",
+                    "value": {
+                      "stringValue": "cluster1"
+                    }
+                  },
+                  {
+                    "key": "istio.destination_instance_name",
+                    "value": {
+                      "stringValue": "podinfo-5488f864c9-95zt7"
+                    }
+                  },
+                  {
+                    "key": "istio.destination_namespace",
+                    "value": {
+                      "stringValue": "tp-otlp-sf2ed7"
+                    }
+                  },
+                  {
+                    "key": "istio.destination_workload",
+                    "value": {
+                      "stringValue": "podinfo"
+                    }
+                  },
+                  {
+                    "key": "istio.destination_workload_type",
+                    "value": {
+                      "stringValue": "pod"
+                    }
+                  },
+                  {
+                    "key": "istio.mesh_id",
+                    "value": {
+                      "stringValue": "cluster.local"
+                    }
+                  },
+                  {
+                    "key": "istio.namespace",
+                    "value": {
+                      "stringValue": "tp-otlp-sf2ed7"
+                    }
+                  },
+                  {
+                    "key": "istio.source_app",
+                    "value": {
+                      "stringValue": "client"
+                    }
+                  },
+                  {
+                    "key": "istio.source_app_version",
+                    "value": {
+                      "stringValue": "v1"
+                    }
+                  },
+                  {
+                    "key": "istio.source_canonical_revision",
+                    "value": {
+                      "stringValue": "v1"
+                    }
+                  },
+                  {
+                    "key": "istio.source_canonical_service",
+                    "value": {
+                      "stringValue": "client"
+                    }
+                  },
+                  {
+                    "key": "istio.source_cluster_id",
+                    "value": {
+                      "stringValue": "cluster1"
+                    }
+                  },
+                  {
+                    "key": "istio.source_instance_name",
+                    "value": {
+                      "stringValue": "client-96d57bbcf-md9bn"
+                    }
+                  },
+                  {
+                    "key": "istio.source_namespace",
+                    "value": {
+                      "stringValue": "tp-otlp-sf2ed7"
+                    }
+                  },
+                  {
+                    "key": "istio.source_workload",
+                    "value": {
+                      "stringValue": "client"
+                    }
+                  },
+                  {
+                    "key": "istio.source_workload_type",
+                    "value": {
+                      "stringValue": "pod"
+                    }
+                  },
+                  {
+                    "key": "node_id",
+                    "value": {
+                      "stringValue": "waypoint~10.244.1.134~waypoint-59c95cb7c9-rpr2h.tp-otlp-sf2ed7~tp-otlp-sf2ed7.svc.cluster.local"
+                    }
+                  },
+                  {
+                    "key": "peer.address",
+                    "value": {
+                      "stringValue": "envoy://internal_client_address/"
+                    }
+                  },
+                  {
+                    "key": "request_size",
+                    "value": {
+                      "stringValue": "0"
+                    }
+                  },
+                  {
+                    "key": "response_flags",
+                    "value": {
+                      "stringValue": "-"
+                    }
+                  },
+                  {
+                    "key": "response_size",
+                    "value": {
+                      "stringValue": "16"
+                    }
+                  },
+                  {
+                    "key": "upstream_cluster",
+                    "value": {
+                      "stringValue": "inbound-vip|9898|http|podinfo.tp-otlp-sf2ed7.svc.cluster.local"
+                    }
+                  },
+                  {
+                    "key": "upstream_cluster.name",
+                    "value": {
+                      "stringValue": "inbound-vip|9898|http|podinfo.tp-otlp-sf2ed7.svc.cluster.local;"
+                    }
+                  },
+                  {
+                    "key": "user_agent",
+                    "value": {
+                      "stringValue": "curl/8.22.0"
+                    }
+                  },
+                  {
+                    "key": "zone",
+                    "value": {
+                      "stringValue": ""
+                    }
+                  }
+                ],
+                "status": {}
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "resource": {
+          "attributes": [
+            {
+              "key": "service.name",
+              "value": {
+                "stringValue": "podinfo.tp-otlp-sf2ed7.svc.cluster.local"
+              }
+            },
+            {
+              "key": "service.version",
+              "value": {
+                "stringValue": "6.9.2"
+              }
+            }
+          ]
+        },
+        "scopeSpans": [
+          {
+            "scope": {
+              "name": "github.com/stefanprodan/podinfo/pkg/api",
+              "version": "6.9.2"
+            },
+            "spans": [
+              {
+                "traceId": "a999b181dcef7e89335c110d4a7ea6fe",
+                "spanId": "da7b98aa40b15b07",
+                "parentSpanId": "723c449a1beeeec5",
+                "flags": 256,
+                "name": "delayHandler",
+                "kind": 1,
+                "startTimeUnixNano": "1791294830131646981",
+                "endTimeUnixNano": "1791294831132640590",
+                "status": {}
+              }
+            ]
+          },
+          {
+            "scope": {
+              "name": "go.opentelemetry.io/contrib/instrumentation/github.com/gorilla/mux/otelmux",
+              "version": "0.63.0"
+            },
+            "spans": [
+              {
+                "traceId": "a999b181dcef7e89335c110d4a7ea6fe",
+                "spanId": "723c449a1beeeec5",
+                "parentSpanId": "662648bf4b02d39b",
+                "flags": 768,
+                "name": "GET /delay/{wait:[0-9]+}",
+                "kind": 2,
+                "startTimeUnixNano": "1791294830131634266",
+                "endTimeUnixNano": "1791294831132694272",
+                "attributes": [
+                  {
+                    "key": "client.address",
+                    "value": {
+                      "stringValue": "10.244.1.134"
+                    }
+                  },
+                  {
+                    "key": "http.request.method",
+                    "value": {
+                      "stringValue": "GET"
+                    }
+                  },
+                  {
+                    "key": "http.response.body.size",
+                    "value": {
+                      "intValue": "16"
+                    }
+                  },
+                  {
+                    "key": "http.response.status_code",
+                    "value": {
+                      "intValue": "200"
+                    }
+                  },
+                  {
+                    "key": "http.route",
+                    "value": {
+                      "stringValue": "/delay/{wait:[0-9]+}"
+                    }
+                  },
+                  {
+                    "key": "network.peer.address",
+                    "value": {
+                      "stringValue": "10.244.1.134"
+                    }
+                  },
+                  {
+                    "key": "network.peer.port",
+                    "value": {
+                      "intValue": "40111"
+                    }
+                  },
+                  {
+                    "key": "network.protocol.version",
+                    "value": {
+                      "stringValue": "1.1"
+                    }
+                  },
+                  {
+                    "key": "server.address",
+                    "value": {
+                      "stringValue": "podinfo.tp-otlp-sf2ed7.svc.cluster.local"
+                    }
+                  },
+                  {
+                    "key": "server.port",
+                    "value": {
+                      "intValue": "9898"
+                    }
+                  },
+                  {
+                    "key": "url.path",
+                    "value": {
+                      "stringValue": "/delay/1"
+                    }
+                  },
+                  {
+                    "key": "url.scheme",
+                    "value": {
+                      "stringValue": "http"
+                    }
+                  },
+                  {
+                    "key": "user_agent.original",
+                    "value": {
+                      "stringValue": "curl/8.22.0"
+                    }
+                  }
+                ],
+                "status": {}
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "resource": {
+          "attributes": [
+            {
+              "key": "service.name",
+              "value": {
+                "stringValue": "waypoint.tp-otlp-sf2ed7"
+              }
+            },
+            {
+              "key": "telemetry.sdk.language",
+              "value": {
+                "stringValue": "cpp"
+              }
+            },
+            {
+              "key": "telemetry.sdk.name",
+              "value": {
+                "stringValue": "envoy"
+              }
+            },
+            {
+              "key": "telemetry.sdk.version",
+              "value": {
+                "stringValue": "3bb16354647d089b9a79020c9fc86cbbc5fcf84b/1.39.2-dev/Clean/RELEASE/BoringSSL"
+              }
+            }
+          ]
+        },
+        "scopeSpans": [
+          {
+            "scope": {
+              "name": "envoy",
+              "version": "3bb16354647d089b9a79020c9fc86cbbc5fcf84b/1.39.2-dev/Clean/RELEASE/BoringSSL"
+            },
+            "spans": [
+              {
+                "traceId": "2132caa05ca64c82454600288b27f3b4",
+                "spanId": "b5333aff2933f5c5",
+                "name": "podinfo.tp-otlp-sf2ed7.svc.cluster.local:9898/*",
+                "kind": 2,
+                "startTimeUnixNano": "1791294831171714000",
+                "endTimeUnixNano": "1791294832174193000",
+                "attributes": [
+                  {
+                    "key": "component",
+                    "value": {
+                      "stringValue": "proxy"
+                    }
+                  },
+                  {
+                    "key": "downstream_cluster",
+                    "value": {
+                      "stringValue": "-"
+                    }
+                  },
+                  {
+                    "key": "guid:x-request-id",
+                    "value": {
+                      "stringValue": "dd56befe-4369-9d5c-8e2c-4cf7bc6a434c"
+                    }
+                  },
+                  {
+                    "key": "http.method",
+                    "value": {
+                      "stringValue": "GET"
+                    }
+                  },
+                  {
+                    "key": "http.protocol",
+                    "value": {
+                      "stringValue": "HTTP/1.1"
+                    }
+                  },
+                  {
+                    "key": "http.status_code",
+                    "value": {
+                      "stringValue": "200"
+                    }
+                  },
+                  {
+                    "key": "http.url",
+                    "value": {
+                      "stringValue": "http://podinfo:9898/delay/1"
+                    }
+                  },
+                  {
+                    "key": "istio.canonical_revision",
+                    "value": {
+                      "stringValue": "latest"
+                    }
+                  },
+                  {
+                    "key": "istio.canonical_service",
+                    "value": {
+                      "stringValue": "waypoint"
+                    }
+                  },
+                  {
+                    "key": "istio.cluster_id",
+                    "value": {
+                      "stringValue": "cluster1"
+                    }
+                  },
+                  {
+                    "key": "istio.destination_app",
+                    "value": {
+                      "stringValue": "podinfo"
+                    }
+                  },
+                  {
+                    "key": "istio.destination_app_version",
+                    "value": {
+                      "stringValue": "v1"
+                    }
+                  },
+                  {
+                    "key": "istio.destination_canonical_revision",
+                    "value": {
+                      "stringValue": "v1"
+                    }
+                  },
+                  {
+                    "key": "istio.destination_canonical_service",
+                    "value": {
+                      "stringValue": "podinfo"
+                    }
+                  },
+                  {
+                    "key": "istio.destination_cluster_id",
+                    "value": {
+                      "stringValue": "cluster1"
+                    }
+                  },
+                  {
+                    "key": "istio.destination_instance_name",
+                    "value": {
+                      "stringValue": "podinfo-5488f864c9-95zt7"
+                    }
+                  },
+                  {
+                    "key": "istio.destination_namespace",
+                    "value": {
+                      "stringValue": "tp-otlp-sf2ed7"
+                    }
+                  },
+                  {
+                    "key": "istio.destination_workload",
+                    "value": {
+                      "stringValue": "podinfo"
+                    }
+                  },
+                  {
+                    "key": "istio.destination_workload_type",
+                    "value": {
+                      "stringValue": "pod"
+                    }
+                  },
+                  {
+                    "key": "istio.mesh_id",
+                    "value": {
+                      "stringValue": "cluster.local"
+                    }
+                  },
+                  {
+                    "key": "istio.namespace",
+                    "value": {
+                      "stringValue": "tp-otlp-sf2ed7"
+                    }
+                  },
+                  {
+                    "key": "istio.source_app",
+                    "value": {
+                      "stringValue": "client"
+                    }
+                  },
+                  {
+                    "key": "istio.source_app_version",
+                    "value": {
+                      "stringValue": "v1"
+                    }
+                  },
+                  {
+                    "key": "istio.source_canonical_revision",
+                    "value": {
+                      "stringValue": "v1"
+                    }
+                  },
+                  {
+                    "key": "istio.source_canonical_service",
+                    "value": {
+                      "stringValue": "client"
+                    }
+                  },
+                  {
+                    "key": "istio.source_cluster_id",
+                    "value": {
+                      "stringValue": "cluster1"
+                    }
+                  },
+                  {
+                    "key": "istio.source_instance_name",
+                    "value": {
+                      "stringValue": "client-96d57bbcf-md9bn"
+                    }
+                  },
+                  {
+                    "key": "istio.source_namespace",
+                    "value": {
+                      "stringValue": "tp-otlp-sf2ed7"
+                    }
+                  },
+                  {
+                    "key": "istio.source_workload",
+                    "value": {
+                      "stringValue": "client"
+                    }
+                  },
+                  {
+                    "key": "istio.source_workload_type",
+                    "value": {
+                      "stringValue": "pod"
+                    }
+                  },
+                  {
+                    "key": "node_id",
+                    "value": {
+                      "stringValue": "waypoint~10.244.1.134~waypoint-59c95cb7c9-rpr2h.tp-otlp-sf2ed7~tp-otlp-sf2ed7.svc.cluster.local"
+                    }
+                  },
+                  {
+                    "key": "peer.address",
+                    "value": {
+                      "stringValue": "envoy://internal_client_address/"
+                    }
+                  },
+                  {
+                    "key": "request_size",
+                    "value": {
+                      "stringValue": "0"
+                    }
+                  },
+                  {
+                    "key": "response_flags",
+                    "value": {
+                      "stringValue": "-"
+                    }
+                  },
+                  {
+                    "key": "response_size",
+                    "value": {
+                      "stringValue": "16"
+                    }
+                  },
+                  {
+                    "key": "upstream_cluster",
+                    "value": {
+                      "stringValue": "inbound-vip|9898|http|podinfo.tp-otlp-sf2ed7.svc.cluster.local"
+                    }
+                  },
+                  {
+                    "key": "upstream_cluster.name",
+                    "value": {
+                      "stringValue": "inbound-vip|9898|http|podinfo.tp-otlp-sf2ed7.svc.cluster.local;"
+                    }
+                  },
+                  {
+                    "key": "user_agent",
+                    "value": {
+                      "stringValue": "curl/8.22.0"
+                    }
+                  },
+                  {
+                    "key": "zone",
+                    "value": {
+                      "stringValue": ""
+                    }
+                  }
+                ],
+                "status": {}
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "resource": {
+          "attributes": [
+            {
+              "key": "service.name",
+              "value": {
+                "stringValue": "podinfo.tp-otlp-sf2ed7.svc.cluster.local"
+              }
+            },
+            {
+              "key": "service.version",
+              "value": {
+                "stringValue": "6.9.2"
+              }
+            }
+          ]
+        },
+        "scopeSpans": [
+          {
+            "scope": {
+              "name": "github.com/stefanprodan/podinfo/pkg/api",
+              "version": "6.9.2"
+            },
+            "spans": [
+              {
+                "traceId": "2132caa05ca64c82454600288b27f3b4",
+                "spanId": "b307fa7d04e21497",
+                "parentSpanId": "9af7408b8320f22f",
+                "flags": 256,
+                "name": "delayHandler",
+                "kind": 1,
+                "startTimeUnixNano": "1791294831172225413",
+                "endTimeUnixNano": "1791294832173319187",
+                "status": {}
+              }
+            ]
+          },
+          {
+            "scope": {
+              "name": "go.opentelemetry.io/contrib/instrumentation/github.com/gorilla/mux/otelmux",
+              "version": "0.63.0"
+            },
+            "spans": [
+              {
+                "traceId": "2132caa05ca64c82454600288b27f3b4",
+                "spanId": "9af7408b8320f22f",
+                "parentSpanId": "b5333aff2933f5c5",
+                "flags": 768,
+                "name": "GET /delay/{wait:[0-9]+}",
+                "kind": 2,
+                "startTimeUnixNano": "1791294831172213670",
+                "endTimeUnixNano": "1791294832173415229",
+                "attributes": [
+                  {
+                    "key": "client.address",
+                    "value": {
+                      "stringValue": "10.244.1.134"
+                    }
+                  },
+                  {
+                    "key": "http.request.method",
+                    "value": {
+                      "stringValue": "GET"
+                    }
+                  },
+                  {
+                    "key": "http.response.body.size",
+                    "value": {
+                      "intValue": "16"
+                    }
+                  },
+                  {
+                    "key": "http.response.status_code",
+                    "value": {
+                      "intValue": "200"
+                    }
+                  },
+                  {
+                    "key": "http.route",
+                    "value": {
+                      "stringValue": "/delay/{wait:[0-9]+}"
+                    }
+                  },
+                  {
+                    "key": "network.peer.address",
+                    "value": {
+                      "stringValue": "10.244.1.134"
+                    }
+                  },
+                  {
+                    "key": "network.peer.port",
+                    "value": {
+                      "intValue": "40111"
+                    }
+                  },
+                  {
+                    "key": "network.protocol.version",
+                    "value": {
+                      "stringValue": "1.1"
+                    }
+                  },
+                  {
+                    "key": "server.address",
+                    "value": {
+                      "stringValue": "podinfo.tp-otlp-sf2ed7.svc.cluster.local"
+                    }
+                  },
+                  {
+                    "key": "server.port",
+                    "value": {
+                      "intValue": "9898"
+                    }
+                  },
+                  {
+                    "key": "url.path",
+                    "value": {
+                      "stringValue": "/delay/1"
+                    }
+                  },
+                  {
+                    "key": "url.scheme",
+                    "value": {
+                      "stringValue": "http"
+                    }
+                  },
+                  {
+                    "key": "user_agent.original",
+                    "value": {
+                      "stringValue": "curl/8.22.0"
+                    }
+                  }
+                ],
+                "status": {}
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}
