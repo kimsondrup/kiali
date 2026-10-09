@@ -86,27 +86,21 @@ func searchStream(t *testing.T, querier tempopb.StreamingQuerierServer) tempopb.
 	return stream
 }
 
-// searchResponse builds one stream message out of the traces it is given.
+// searchResponse builds one message of a search stream. Each trace is given the spans named, so a
+// later record of the same trace can be told from an earlier one by its span count.
 func searchResponse(traces ...*tempopb.TraceSearchMetadata) *tempopb.SearchResponse {
-	return &tempopb.SearchResponse{Traces: traces}
+	return &tempopb.SearchResponse{Traces: traces, Metrics: &tempopb.SearchMetrics{}}
 }
 
-// searchedTrace builds a search result for one trace, carrying the given number of spans.
-func searchedTrace(traceID string, spans int) *tempopb.TraceSearchMetadata {
-	spanSet := &tempopb.SpanSet{Matched: uint32(spans)}
-	for i := 0; i < spans; i++ {
-		spanSet.Spans = append(spanSet.Spans, &tempopb.Span{
-			SpanID:            traceID + string(rune('a'+i)),
-			Name:              "reviews.bookinfo.svc.cluster.local:9080/*",
-			StartTimeUnixNano: 1693389472310270000,
-			DurationNanos:     646000,
-		})
+func searchTrace(traceID string, spanIDs ...string) *tempopb.TraceSearchMetadata {
+	spans := make([]*tempopb.Span, 0, len(spanIDs))
+	for _, spanID := range spanIDs {
+		spans = append(spans, &tempopb.Span{SpanID: spanID, StartTimeUnixNano: 1700000000000000000, DurationNanos: 1000})
 	}
 	return &tempopb.TraceSearchMetadata{
-		TraceID:         traceID,
-		RootServiceName: "reviews.bookinfo",
-		RootTraceName:   "reviews.bookinfo.svc.cluster.local:9080/*",
-		SpanSet:         spanSet,
+		TraceID:       traceID,
+		RootTraceName: "reviews.default",
+		SpanSet:       &tempopb.SpanSet{Spans: spans, Matched: uint32(len(spans))},
 	}
 }
 
@@ -122,7 +116,7 @@ func TestGetServicesJudgesTheBackendOnWhatItReceives(t *testing.T) {
 	}{
 		"a backend that answers with traces": {
 			dial: dialer(&scriptedQuerier{messages: []*tempopb.SearchResponse{
-				searchResponse(searchedTrace("02e299711ce47710289dc6640727404f", 1)),
+				searchResponse(searchTrace("02e299711ce47710289dc6640727404f", "49cd77d1f9dcd936")),
 			}}),
 			expectedOk: true,
 		},
@@ -151,14 +145,39 @@ func TestGetServicesJudgesTheBackendOnWhatItReceives(t *testing.T) {
 	}
 }
 
-// TestProcessStreamAccumulatesDisjointMessages covers the framing Tempo's StreamingQuerier.Search
-// uses. A response too large for one message is split by partitioning the trace list, so every
-// message carries traces the others do not and all of them belong in the result.
+// TestProcessStreamReportsAnUpdatedTraceOnce covers a trace ID that repeats across the stream,
+// which is a trace Tempo updated between two diffs - found again in a later block, say. The two
+// records are one trace, and the later one is the one to keep, because it has the fuller span set.
+func TestProcessStreamReportsAnUpdatedTraceOnce(t *testing.T) {
+	first := searchTrace("02e299711ce47710289dc6640727404f", "49cd77d1f9dcd936")
+	second := searchTrace("02e299711ce47710289dc6640727404f", "49cd77d1f9dcd936", "2e6ca056f5fc6fdc")
+	other := searchTrace("1c6e4bf1d1c0ac3d91f9b2e5a0d7c418", "aa11bb22cc33dd44")
+
+	stream := searchStream(t, &scriptedQuerier{messages: []*tempopb.SearchResponse{
+		searchResponse(first),
+		searchResponse(second, other),
+	}})
+
+	traces, err := processStream(context.Background(), stream, "reviews.default")
+	require.NoError(t, err)
+	require.Len(t, traces, 2)
+
+	assert.Equal(t, "02e299711ce47710289dc6640727404f", string(traces[0].TraceID))
+	// The updated record of the trace won: it reports both of its matched spans.
+	assert.Len(t, traces[0].Spans, 2)
+	assert.Equal(t, "1c6e4bf1d1c0ac3d91f9b2e5a0d7c418", string(traces[1].TraceID))
+	assert.Len(t, traces[1].Spans, 1)
+}
+
+// TestProcessStreamAccumulatesDisjointMessages covers the framing Tempo uses for a response too
+// large for one message, which partitions the trace list so each message carries traces the
+// others do not. Keeping the latest version of each trace ID accumulates these the same way
+// appending did, so collapsing a repeated trace costs nothing here.
 func TestProcessStreamAccumulatesDisjointMessages(t *testing.T) {
 	stream := searchStream(t, &scriptedQuerier{messages: []*tempopb.SearchResponse{
-		searchResponse(searchedTrace("02e299711ce47710289dc6640727404f", 1)),
-		searchResponse(searchedTrace("1c6e4bf1d1c0ac3d91f9b2e5a0d7c418", 1)),
-		searchResponse(searchedTrace("3f7a90b4c5d6e7f801928374655aa0bb", 1)),
+		searchResponse(searchTrace("02e299711ce47710289dc6640727404f", "49cd77d1f9dcd936")),
+		searchResponse(searchTrace("1c6e4bf1d1c0ac3d91f9b2e5a0d7c418", "aa11bb22cc33dd44")),
+		searchResponse(searchTrace("3f7a90b4c5d6e7f801928374655aa0bb", "bb22cc33dd44ee55")),
 	}})
 
 	traces, err := processStream(context.Background(), stream, "reviews.default")
@@ -167,6 +186,22 @@ func TestProcessStreamAccumulatesDisjointMessages(t *testing.T) {
 	assert.Equal(t, "02e299711ce47710289dc6640727404f", string(traces[0].TraceID))
 	assert.Equal(t, "1c6e4bf1d1c0ac3d91f9b2e5a0d7c418", string(traces[1].TraceID))
 	assert.Equal(t, "3f7a90b4c5d6e7f801928374655aa0bb", string(traces[2].TraceID))
+}
+
+// TestProcessStreamCountsAnUnpaddedTraceOnce covers Tempo stripping the leading zeros of a trace
+// ID: the same trace can arrive spelled two ways across two messages, and the two spellings are
+// one trace. The padded ID is what the rest of Kiali compares, so it is what counts here.
+func TestProcessStreamCountsAnUnpaddedTraceOnce(t *testing.T) {
+	stream := searchStream(t, &scriptedQuerier{messages: []*tempopb.SearchResponse{
+		searchResponse(searchTrace("2e299711ce47710289dc6640727404f", "49cd77d1f9dcd936")),
+		searchResponse(searchTrace("02e299711ce47710289dc6640727404f", "49cd77d1f9dcd936", "2e6ca056f5fc6fdc")),
+	}})
+
+	traces, err := processStream(context.Background(), stream, "reviews.default")
+	require.NoError(t, err)
+	require.Len(t, traces, 1)
+	assert.Equal(t, "02e299711ce47710289dc6640727404f", string(traces[0].TraceID))
+	assert.Len(t, traces[0].Spans, 2)
 }
 
 // TestProcessStreamEndsOnEOF covers a search that matched nothing: the server ends the stream
@@ -182,11 +217,11 @@ func TestProcessStreamEndsOnEOF(t *testing.T) {
 }
 
 // TestProcessStreamReportsAStreamError covers a stream that fails partway. The traces already
-// received are the beginning of an answer rather than an answer, so the error is what reaches the
-// caller.
+// received are not an answer - they are the beginning of one - so they are not returned beside a
+// nil error, which would read as a complete search that happened to match little.
 func TestProcessStreamReportsAStreamError(t *testing.T) {
 	stream := searchStream(t, &scriptedQuerier{
-		messages: []*tempopb.SearchResponse{searchResponse(searchedTrace("02e299711ce47710289dc6640727404f", 1))},
+		messages: []*tempopb.SearchResponse{searchResponse(searchTrace("02e299711ce47710289dc6640727404f", "49cd77d1f9dcd936"))},
 		failWith: status.Error(codes.Internal, "block scheduler unavailable"),
 	})
 

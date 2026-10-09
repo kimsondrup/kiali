@@ -141,11 +141,27 @@ func (jc TempoGRPCClient) GetServicesList(ctx context.Context) ([]string, error)
 	return services, err
 }
 
-// processStream
+// processStream reports each trace of a Tempo search stream once.
+//
+// Tempo's StreamingQuerier.Search sends a diff per message rather than the whole result set, and
+// from 3.0.0 also splits a response larger than max_grpc_streaming_packet_size into packets that
+// partition the trace list. So every message carries traces the others do not, and one trace
+// arrives twice only when Tempo updated it between two diffs - a trace found in a second block is
+// such a trace. Keeping the latest version of each trace ID and accumulating the IDs across
+// messages is right for both: the split needs every message, and of two records of an updated
+// trace the later one is the fuller one.
+//
+// The key is the padded trace ID ConvertTraceMetadata reports, not the spelling Tempo sent, so
+// the same trace counts once however many leading zeros a given message left off.
+//
+// A read that times out reports what arrived rather than failing. Because the messages are diffs,
+// that drops whatever the later ones carried, so it is a known defect left for the change that
+// fixes it.
 func processStream(ctx context.Context, stream tempopb.StreamingQuerier_SearchClient, serviceName string) ([]jaegerModels.Trace, error) {
 	zl := getLoggerFromContextGRPCTempo(ctx)
 
-	tracesMap := []jaegerModels.Trace{}
+	order := []jaegerModels.TraceID{}
+	latest := map[jaegerModels.TraceID]jaegerModels.Trace{}
 
 	for received, err := stream.Recv(); err != io.EOF; received, err = stream.Recv() {
 		if err != nil {
@@ -160,12 +176,20 @@ func processStream(ctx context.Context, stream tempopb.StreamingQuerier_SearchCl
 			batchTrace, err := converter.ConvertTraceMetadata(*trace, serviceName)
 			if err != nil {
 				zl.Error().Msgf("[gRPC Tempo] Error getting trace detail for %s: %s", trace.TraceID, err.Error())
-			} else {
-				tracesMap = append(tracesMap, *batchTrace)
+				continue
 			}
+			if _, seen := latest[batchTrace.TraceID]; !seen {
+				order = append(order, batchTrace.TraceID)
+			}
+			latest[batchTrace.TraceID] = *batchTrace
 		}
 	}
-	return tracesMap, nil
+
+	traces := make([]jaegerModels.Trace, 0, len(order))
+	for _, traceID := range order {
+		traces = append(traces, latest[traceID])
+	}
+	return traces, nil
 }
 
 // processServices
