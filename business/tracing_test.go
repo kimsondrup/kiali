@@ -201,6 +201,35 @@ func TestTracesToSpanWithoutFilter(t *testing.T) {
 	assert.Equal("t2_process_3", string(spans[1].ProcessID))
 }
 
+// TestTracesToSpanTempoWithoutProcess covers a span that carries no process. Every converter
+// path on the Tempo side sets one today, so this is reachable only from a response shape none
+// of them produces - but the Tempo branch read the field without looking, which is a panic in
+// a request handler, not a missing span. The Jaeger branch cannot hit it because it assigns
+// the process first.
+func TestTracesToSpanTempoWithoutProcess(t *testing.T) {
+	assert := assert.New(t)
+
+	conf := config.NewConfig()
+	conf.ExternalServices.Tracing.Provider = config.TempoProvider
+
+	r := model.TracingResponse{
+		Data: []jaegerModels.Trace{{
+			Spans: []jaegerModels.Span{{
+				ProcessID: "no_process",
+				Process:   nil,
+			}, {
+				ProcessID: "reviews",
+				Process:   &jaegerModels.Process{ServiceName: "reviews.default"},
+			}},
+		}},
+		TracingServiceName: "reviews.default",
+	}
+
+	spans := tracesToSpans(context.Background(), models.TracingName{App: "reviews", Lookup: "reviews"}, &r, nil, conf)
+	assert.Len(spans, 1)
+	assert.Equal("reviews", string(spans[0].ProcessID))
+}
+
 func TestTracesToSpanWithServiceFilter(t *testing.T) {
 	assert := assert.New(t)
 
