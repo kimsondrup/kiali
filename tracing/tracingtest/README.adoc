@@ -1,0 +1,334 @@
+=== tracingtest fixtures
+
+`mock.go` mocks Kiali's tracing client interfaces. The JSON files beside it are captured
+backend responses, read by the tests in `tracing/tempo`, `tracing/otel/otlp` and
+`tracing/otel/model/converter`.
+
+Each one is recorded below with where it came from and the command that would capture it
+again, because a fixture nobody can refresh is a liability.
+
+Two things worth knowing before any of it, because both are why several of these fixtures
+exist at all:
+
+* *Tempo does not zero-pad a trace ID.* Its search API strips the leading zeros, so about
+one ID in sixteen arrives shorter than 32 hex characters - measured as 23 of 200 over HTTP,
+at 31, 30 and 29 characters, and 4 of 40 over gRPC. The spans of the same trace carry all 16
+bytes, so the padded form is the one Tempo itself reports once asked for the trace. The
+fixtures here record the stripping as captured, which is why `ConvertId` pads.
+* *Envoy sets no OTLP span status and writes every attribute as a `stringValue`* - measured
+`{}` on every waypoint span of an ambient mesh and 3471 stringValues of 3471. So no capture
+of Istio-only traffic can exercise a typed attribute, a span status or a second
+instrumentation scope, and the fixtures that do exercise them come from an instrumented
+application or from a document posted by hand. That is also the honest weight of the code
+they cover: it changes nothing on an Istio-only mesh and everything on a mesh with
+instrumented applications.
+
+==== How to capture a Tempo response
+
+Tempo answers both of the endpoints Kiali's HTTP client uses on its query port, 3200:
+
+[source,shell]
+----
+TEMPO=http://tempo.istio-system.svc.cluster.local:3200
+curl -s "$TEMPO/api/traces/<trace id>"                       # a trace detail
+curl -s "$TEMPO/api/search?start=<unix>&end=<unix>&spss=10&q=<traceql>"
+----
+
+Those are the search parameters Kiali sends, bar `limit`: `prepareTraceQL` adds one only when
+the caller asks for a limit, and Kiali's own HTTP handlers ask for 100
+(`handlers/queryparams/tracing.go`). It has no effect on the shape of a response.
+
+The search query has to be Kiali's own, or the response will not hold the attributes Kiali
+reads: an attribute reaches the search path only when `prepareTraceQL`'s select list names
+it. `GetTraceQLQuery` (`tracing/tempo/http_client.go`) returns exactly what Kiali sends, and
+it is reproduced by hand as:
+
+....
+{ .service.name = "<service>"  } && {  } | select(status, .service_name, .node_id,
+.component, .upstream_cluster, .http.method, .response_flags,
+.istio.destination_workload, .istio.destination_namespace,
+.istio.destination_instance_name, .istio.destination_canonical_service,
+.istio.source_workload, .istio.source_namespace, .istio.source_instance_name,
+.istio.source_canonical_service, resource.hostname, name)
+....
+
+with `&& .http.status_code != "200"` added inside the first `{ }` for the Errors only filter.
+
+Tempo's default retention is short - two hours in the cluster these were taken from - so the
+`start` and `end` of a search have to cover a window that still holds the trace.
+
+==== How to capture a Jaeger api_v3 response
+
+api_v3 is served twice, as HTTP on `/api/v3` and as gRPC on `jaeger.api_v3.QueryService`,
+over the same data. Both are worth capturing, because they do not render the same response
+the same way - see `apiv3_trace_http.json` and `apiv3_trace_grpc.json` below.
+
+Over HTTP the attributes filter is one parameter holding a URL-encoded JSON map. The
+grpc-gateway form `query.attributes[k]=v` is silently ignored: it answers 200 with every
+trace, which reads exactly like a backend that cannot filter.
+
+[source,shell]
+----
+curl -sG 'http://<jaeger>:16686/api/v3/traces' \
+  --data-urlencode "query.serviceName=waypoint.<namespace>" \
+  --data-urlencode "query.startTimeMin=$(date -u -d '-1 hour'   +%Y-%m-%dT%H:%M:%SZ)" \
+  --data-urlencode "query.startTimeMax=$(date -u -d '+1 minute' +%Y-%m-%dT%H:%M:%SZ)" \
+  --data-urlencode 'query.searchDepth=20' \
+  --data-urlencode "query.attributes=$(jq -nc '{"istio.cluster_id": "cluster1"}')"
+
+curl -s 'http://<jaeger>:16686/api/v3/traces/<trace id>'      # a trace detail
+----
+
+That `istio.cluster_id` attribute is not decoration. Kiali appends
+`tags={"istio.cluster_id":"<its cluster id>"}` to every trace query, so a span without it is
+invisible to Kiali even when the service name matches.
+
+Over gRPC, Jaeger publishes no generated Go for api_v3 and its reflection advertises the
+service without serving descriptors, so the protos have to be fetched and their annotation
+imports stripped before `grpcurl` can parse them. Then:
+
+[source,shell]
+----
+jq -n --arg svc "waypoint.<namespace>" \
+      --arg min "$(date -u -d '-1 hour'   +%Y-%m-%dT%H:%M:%SZ)" \
+      --arg max "$(date -u -d '+1 minute' +%Y-%m-%dT%H:%M:%SZ)" '
+  {query: {serviceName: $svc, startTimeMin: $min, startTimeMax: $max, searchDepth: 20,
+           attributes: {"istio.cluster_id": "cluster1"}}}' \
+| grpcurl -plaintext -import-path <idl> -proto api_v3/query_service.proto \
+    -d @ <jaeger>:16685 jaeger.api_v3.QueryService/FindTraces
+----
+
+`FindTraces` is server-streaming and answers *chunks*: one trace can straddle messages, so a
+reader accumulates. Tempo's `tempopb.StreamingQuerier/Search` streams *cumulative snapshots*
+instead, so a reader there keeps the latest and must not concatenate. Measured on the same
+data: 20 messages for 20 traces from Jaeger, 1 from Tempo. Getting this backwards is silent
+either way - one double-counts, the other throws traces away.
+
+==== The fixtures
+
+`response.json`::
+A Tempo `/api/search` response, added by *Add Tempo tests (#6920)*. Its spans carry no `name`
+field, which matches the select list as it stood at that commit.
+
+`responseAmbient.json`::
+A Tempo `/api/search` response, added by *Ambient tracing (#8063)*. Matches the select list as
+it stood there, plus the `.istio.cluster_id` condition Kiali adds for a multicluster mesh. Its
+trace ID is 31 characters, which is Tempo's stripped leading zero, and it is what
+`TestGetAmbientTraces` reads back as the padded `02e299711ce47710289dc6640727404f`.
+
+`responseTrace.json`::
+A Tempo `/api/traces/{id}` response in Tempo's own `batches` envelope, added by *Add Tempo
+tests (#6920)*. Its spans start on 2023-12-05, so it predates the Tempo running today, and all
+six of its resources carry an instrumentation scope of `{}` - a shape a current Tempo does not
+send, and the only fixture here that covers it.
++
+[source,shell]
+----
+curl -s "$TEMPO/api/traces/3ba55609c3cde49649cd77d1f9dcd936"
+----
+
+`responseTraceMultiScope.json`::
+A Tempo 3.1.0 `/api/traces/{id}` response for trace `3fed459787ea5c51070a19c4e6cd3040`,
+captured from an ambient kind mesh running podinfo behind a waypoint in namespace
+`tp-ntegzp`. Two resources: the waypoint's Envoy spans under the `envoy` scope, and podinfo's
+own SDK spans under *two* scopes in one resource -
+`github.com/stefanprodan/podinfo/pkg/api` and the `otelmux` instrumentation.
++
+That second resource is the point of the fixture, and it is the only committed body that has
+it: one resource carrying two scopes is what distinguishes reading every `scopeSpans` from
+reading the first one. Every other multi-scope capture here spreads its scopes over separate
+resources, where a resource's first scope happens to be the right one for all of its spans,
+and a converter that truncates to `ScopeSpans[0]` passes anyway. The two spans also share a
+process, so the scope is the only thing telling them apart.
++
+[source,shell]
+----
+curl -s "$TEMPO/api/traces/3fed459787ea5c51070a19c4e6cd3040"
+----
+
+`responseTraceTypedAttrs.json`::
+The same capture for a second trace of the same mesh, `4ce7f3617b6b969cad880718687d652d` -
+one waypoint span and one podinfo span. It carries four `intValue`
+attributes from podinfo's SDK (`network.peer.port`, `http.response.body.size`,
+`http.response.status_code`, `server.port`) beside 48 `stringValue` ones, which is the mixture
+a mesh with an instrumented application actually produces. Both spans report a status of `{}`,
+because neither Envoy nor this SDK sets one.
++
+[source,shell]
+----
+curl -s "$TEMPO/api/traces/4ce7f3617b6b969cad880718687d652d"
+----
+
+`responseTypedTrace.json`::
+A Tempo 3.1.0 `/api/traces/{id}` response for trace `60bad1536be1cd2f5b39bf02883c9656`,
+captured from a different kind mesh. Its four spans come from an agentgateway and from an
+nginx OpenTelemetry module, and it is the only fixture here carrying an `arrayValue` attribute
+end to end, as well as the only one whose two scopes are a scope with a version and a scope
+without one (`nginx`/`1.31.6` and a bare `agentgateway`).
++
+The nginx spans look like Envoy spans on purpose - the module is configured to stamp
+`component`, `node_id` and the `istio.*` attributes on them - so do not "correct" the
+`nginx`/`1.31.6` scope to `envoy`. Their `intValue` attributes are typed because Jaeger's
+translator types a numeric tag, not because the emitter wrote integers; the trace reached
+Tempo by an api_v3 replay out of Jaeger, which is also where the `@jaeger@warnings` attribute
+comes from.
++
+Two edits, both recorded here rather than hidden: the span timestamps were moved forward to
+get the trace inside the retention window of the Tempo it was replayed into, and the document
+was carved out of a larger capture that held this trace and two others merged under one
+synthetic ID. What is left is one real trace, under the ID it really had. It is genuinely
+partial: the nginx span's parent is not in the document, because the Envoy span above it was
+never captured.
++
+Refreshing this one takes more than a window. The agentgateway and nginx-OpenTelemetry stack
+that emitted it is not part of a stock Istio mesh, so it has to be running before there is
+anything to capture, and the command below answered 404 on the cluster the fixture came from
+when that was last checked. This is the one to leave alone unless that stack is up.
++
+[source,shell]
+----
+curl -s "$TEMPO/api/traces/60bad1536be1cd2f5b39bf02883c9656"
+----
+
+`responseTypedSearch.json`::
+A Tempo 3.1.0 `/api/search` response to Kiali's own TraceQL, for service `typeprobe.devex`.
+The typed attributes it carries are `.component` as `intValue` and `.response_flags` as
+`boolValue`, which are keys the select list names - that is what makes them reachable. It also
+shows the `status` attribute at two of its three values, `error` and `ok`.
++
+`typeprobe.devex` is a synthetic OTLP document posted to Tempo rather than mesh traffic, which
+is the only way to get a typed attribute onto a key Kiali selects. To capture it again, post
+the two spans below to Tempo's OTLP HTTP endpoint on port 4318 and then run Kiali's plain query
+over the service name. This is the whole document that produced the fixture: the resource
+carries `hostname` because the select list names `resource.hostname`, and the two spans are
+what the fixture's two spans are.
++
+[source,shell]
+----
+curl -s -X POST http://tempo.istio-system.svc.cluster.local:4318/v1/traces \
+  -H 'Content-Type: application/json' -d '{"resourceSpans":[{"resource":{"attributes":[
+    {"key":"service.name","value":{"stringValue":"typeprobe.devex"}},
+    {"key":"hostname","value":{"stringValue":"probe-host"}}]},
+  "scopeSpans":[{"scope":{"name":"typeprobe","version":"0.1.0"},"spans":[
+    {"traceId":"000f0f0f0f0f0f0f0f0f0f0f0f0f0f01","spanId":"00cccccccccccc01",
+     "name":"probe-typed","kind":2,
+     "startTimeUnixNano":"<now ns>","endTimeUnixNano":"<now ns + 4000000>",
+     "status":{"code":2,"message":"probe says why"},
+     "attributes":[{"key":"component","value":{"intValue":"7"}},
+       {"key":"response_flags","value":{"boolValue":true}},
+       {"key":"http.status_code","value":{"intValue":"503"}},
+       {"key":"http.method","value":{"stringValue":"GET"}},
+       {"key":"istio.destination_workload","value":{"stringValue":"details-v1"}},
+       {"key":"istio.cluster_id","value":{"stringValue":"cluster1"}}]},
+    {"traceId":"000f0f0f0f0f0f0f0f0f0f0f0f0f0f01","spanId":"00cccccccccccc02",
+     "parentSpanId":"00cccccccccccc01","name":"probe-ok","kind":2,
+     "startTimeUnixNano":"<now ns>","endTimeUnixNano":"<now ns + 4000000>",
+     "status":{"code":1},
+     "attributes":[{"key":"component","value":{"stringValue":"proxy"}},
+       {"key":"response_flags","value":{"stringValue":"-"}},
+       {"key":"http.method","value":{"stringValue":"GET"}},
+       {"key":"istio.cluster_id","value":{"stringValue":"cluster1"}}]}]}]}]}'
+----
++
+Two of the attributes posted are not in the fixture, which is the select list doing its work:
+`http.status_code` is not selected by the plain query, and `.istio.cluster_id` is a condition
+Kiali only adds for a multicluster mesh. The trace ID comes back 29 characters long, because
+Tempo's search API strips its leading zeros.
+
+`responseTypedErrors.json`::
+A Tempo 3.1.0 `/api/search` response to Kiali's *Errors only* TraceQL, for service
+`errorprobe.devex`: two spans, one that failed and one that did not.
++
+Captured from a synthetic document too, for a reason worth stating. Envoy never sets an OTLP
+span status, so Tempo's `status` intrinsic is `unset` for Envoy spans and Kiali's Errors only
+search over real mesh data in Tempo returns nothing. A fixture for that path therefore has to
+come from an emitter that does set a status.
++
+The failed span's `http.status_code` is a *string*, and it has to be: Kiali builds the
+condition `.http.status_code != "200"`, and TraceQL will not compare a quoted string against
+an int-typed attribute. Measured on the same Tempo, a span whose `http.status_code` is
+`{"intValue":"503"}` is returned by the plain query and by `!= 200` unquoted, and is not
+returned by the query Kiali sends.
++
+[source,shell]
+----
+curl -s -X POST http://tempo.istio-system.svc.cluster.local:4318/v1/traces \
+  -H 'Content-Type: application/json' -d '{"resourceSpans":[{"resource":{"attributes":[
+    {"key":"service.name","value":{"stringValue":"errorprobe.devex"}},
+    {"key":"hostname","value":{"stringValue":"probe-host"}}]},
+  "scopeSpans":[{"scope":{"name":"errorprobe","version":"0.1.0"},"spans":[
+    {"traceId":"000e0e0e0e0e0e0e0e0e0e0e0e0e0e01","spanId":"00dddddddddddd01",
+     "name":"probe-failed","kind":2,
+     "startTimeUnixNano":"<now ns>","endTimeUnixNano":"<now ns + 4000000>",
+     "status":{"code":2,"message":"upstream connect error"},
+     "attributes":[{"key":"component","value":{"stringValue":"proxy"}},
+       {"key":"http.method","value":{"stringValue":"GET"}},
+       {"key":"http.status_code","value":{"stringValue":"503"}},
+       {"key":"response_flags","value":{"stringValue":"UF"}},
+       {"key":"istio.cluster_id","value":{"stringValue":"cluster1"}}]},
+    {"traceId":"000e0e0e0e0e0e0e0e0e0e0e0e0e0e01","spanId":"00dddddddddddd02",
+     "parentSpanId":"00dddddddddddd01","name":"probe-ok","kind":2,
+     "startTimeUnixNano":"<now ns>","endTimeUnixNano":"<now ns + 4000000>",
+     "status":{},
+     "attributes":[{"key":"component","value":{"stringValue":"proxy"}},
+       {"key":"http.method","value":{"stringValue":"GET"}},
+       {"key":"http.status_code","value":{"stringValue":"200"}},
+       {"key":"response_flags","value":{"stringValue":"-"}},
+       {"key":"istio.cluster_id","value":{"stringValue":"cluster1"}}]}]}]}]}'
+----
++
+Then run the Errors only query, the plain one with `&& .http.status_code != "200"` inside the
+first `{ }`. The second span is in the fixture because `spss` returns the other spans of a
+matched trace; it is the one that did not fail, and its status intrinsic is `unset`.
+
+`apiv3_trace_http.json`::
+A Jaeger 2.21.0 `GET /api/v3/traces/{id}` response for trace
+`2132caa05ca64c82454600288b27f3b4`, captured from an ambient kind mesh in namespace
+`tp-otlp-sf2ed7`: three spans over two resources, the waypoint's and podinfo's.
++
+It is here for two things that cannot be read off any Tempo capture. Its payload sits under a
+`result` key, which is grpc-gateway wrapping the gRPC response, so the envelope is
+`{"result":{"resourceSpans":[...]}}` where Tempo's detail is `{"batches":[...]}`. And its
+trace and span IDs are *hex*, where OTLP/JSON specifies base64 - 32 hex characters are
+themselves valid base64, so a strict `protojson` accepts one and hands back 24 bytes of
+garbage with no error at all. It also renders `kind` as the *number* 1 or 2, where Tempo
+renders the name `SPAN_KIND_SERVER`.
++
+[source,shell]
+----
+curl -s 'http://<jaeger221>:16686/api/v3/traces/2132caa05ca64c82454600288b27f3b4'
+----
+
+`apiv3_trace_grpc.json`::
+The same trace of the same mesh over `jaeger.api_v3.QueryService/GetTrace`, which is what
+makes it worth keeping: the two files hold the same spans and spell them differently, and the
+decode tests read them back to the same bytes.
++
+This is not the wire payload - gRPC's is binary protobuf - it is the received message rendered
+as OTLP/JSON by `grpcurl`, which is also how Kiali's own decode sees it. So its root key is a
+bare `resourceSpans` with no envelope, its IDs are base64 because they are proto `bytes`, and
+its enums are names rather than numbers, which is what proto-to-JSON emits by default.
++
+[source,shell]
+----
+grpcurl -plaintext -import-path <idl> -proto api_v3/query_service.proto \
+  -d '{"trace_id":"2132caa05ca64c82454600288b27f3b4"}' \
+  <jaeger221>:16685 jaeger.api_v3.QueryService/GetTrace
+----
+
+`apiv3_search_http.json`::
+A Jaeger 2.21.0 `GET /api/v3/traces` search response over the same mesh: three traces spread
+over six resource spans, under the same `result` envelope and with the same hex IDs.
++
+It is the only capture here where one trace straddles several resource spans, so it is what
+pins grouping spans by trace ID rather than by resource. It is also the only one carrying a
+span status that is set - `{"code": 2}` on two of its nine spans - and it carries it as the
+*number* 2, which is the form live api_v3 renders. The command is the search in
+*How to capture a Jaeger api_v3 response* above.
+
+The kind cluster that produced the five fixtures above - `responseTraceMultiScope.json`,
+`responseTraceTypedAttrs.json` and the three api_v3 captures - was down when this file was
+written, so their commands are recorded from the capture rather than re-run. The namespaces
+they name (`tp-ntegzp`, `tp-otlp-sf2ed7`) are per-task scratch namespaces and will not exist
+again; a fresh capture uses a fresh one and differs in the service names and the IDs, not in
+the shapes described here.

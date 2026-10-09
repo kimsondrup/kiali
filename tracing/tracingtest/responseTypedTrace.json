@@ -1,1 +1,514 @@
-{"batches":[{"resource":{"attributes":[{"key":"host.name","value":{"stringValue":"api-gateway.agentgateway-system.svc.cluster.local"}},{"key":"k8s.node.name","value":{"stringValue":"istio-ambient-worker"}},{"key":"k8s.pod.ip","value":{"stringValue":"10.244.1.177"}},{"key":"service.instance.id","value":{"stringValue":"agentgateway~10.244.1.177~api-gateway-79ff864465-xhslf.agentgateway-system~agentgateway-system.svc.cluster.local"}},{"key":"service.namespace","value":{"stringValue":"agentgateway-system"}},{"key":"service.version","value":{"stringValue":"1.5.0"}},{"key":"telemetry.sdk.language","value":{"stringValue":"rust"}},{"key":"telemetry.sdk.name","value":{"stringValue":"opentelemetry"}},{"key":"telemetry.sdk.version","value":{"stringValue":"0.32.1"}},{"key":"k8s.namespace.name","value":{"stringValue":"agentgateway-system"}},{"key":"k8s.pod.name","value":{"stringValue":"api-gateway-79ff864465-xhslf"}},{"key":"service.name","value":{"stringValue":"api-gateway.agentgateway-system"}}]},"scopeSpans":[{"scope":{"name":"agentgateway"},"spans":[{"traceId":"YLrRU2vhzS9bOb8CiDyWVg==","spanId":"9jVF+sYMHLI=","name":"GET /api/orders/*","kind":"SPAN_KIND_SERVER","startTimeUnixNano":"1791032996217450464","endTimeUnixNano":"1791032996220948666","attributes":[{"key":"api_class","value":{"stringValue":"standard"}},{"key":"customer","value":{"stringValue":"acme"}},{"key":"duration","value":{"stringValue":"3ms"}},{"key":"endpoint","value":{"stringValue":"orders-api.api-orders.svc.cluster.local:8080"}},{"key":"gateway","value":{"stringValue":"agentgateway-system/api-gateway"}},{"key":"http.host","value":{"stringValue":"api.istio.test"}},{"key":"http.path","value":{"stringValue":"/api/orders/uuid"}},{"key":"http.status","value":{"intValue":"200"}},{"key":"http.version","value":{"stringValue":"HTTP/2.0"}},{"key":"istio.canonical_revision","value":{"stringValue":"latest"}},{"key":"istio.canonical_service","value":{"stringValue":"api-gateway"}},{"key":"istio.cluster_id","value":{"stringValue":"cluster1"}},{"key":"istio.namespace","value":{"stringValue":"agentgateway-system"}},{"key":"jwt.sub","value":{"stringValue":"e8fe88eb-b40a-4c47-8552-80ec805e0814"}},{"key":"listener","value":{"stringValue":"https"}},{"key":"network.protocol.version","value":{"stringValue":"2"}},{"key":"protocol","value":{"stringValue":"http"}},{"key":"route","value":{"stringValue":"api-orders/orders"}},{"key":"route_rule","value":{"stringValue":"orders-tree"}},{"key":"span.id","value":{"stringValue":"f63545fac60c1cb2"}},{"key":"src.addr","value":{"stringValue":"10.89.0.1:38371"}},{"key":"trace.id","value":{"stringValue":"60bad1536be1cd2f5b39bf02883c9656"}},{"key":"url.scheme","value":{"stringValue":"http"}},{"key":"http.method","value":{"stringValue":"GET"}}],"status":{}},{"traceId":"YLrRU2vhzS9bOb8CiDyWVg==","spanId":"B/fFvqQKNXQ=","parentSpanId":"9jVF+sYMHLI=","name":"RateLimit","kind":"SPAN_KIND_CLIENT","startTimeUnixNano":"1791032996217627801","endTimeUnixNano":"1791032996218848600","attributes":[{"key":"agentgateway.outbound.kind","value":{"stringValue":"Policy"}},{"key":"agentgateway.outbound.subtype","value":{"stringValue":"RateLimit"}},{"key":"grpc.status","value":{"intValue":"0"}},{"key":"http.host","value":{"stringValue":"ratelimit.apigw-ratelimit.svc.cluster.local"}},{"key":"http.path","value":{"stringValue":"/envoy.service.ratelimit.v3.RateLimitService/ShouldRateLimit"}},{"key":"http.method","value":{"stringValue":"POST"}}],"status":{}},{"traceId":"YLrRU2vhzS9bOb8CiDyWVg==","spanId":"2hxxvTE76y4=","parentSpanId":"9jVF+sYMHLI=","name":"GET orders-api.api-orders.svc.cluster.local:8080","kind":"SPAN_KIND_CLIENT","startTimeUnixNano":"1791032996218894126","endTimeUnixNano":"1791032996220914962","attributes":[{"key":"agentgateway.outbound.kind","value":{"stringValue":"Primary"}},{"key":"agentgateway.outbound.subtype","value":{"stringValue":"Http"}},{"key":"http.host","value":{"stringValue":"orders-api.api-orders.svc.cluster.local"}},{"key":"http.path","value":{"stringValue":"/api/orders/uuid"}},{"key":"http.status","value":{"intValue":"200"}},{"key":"http.method","value":{"stringValue":"GET"}}],"status":{}}]}]},{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"orders-api.api-orders"}}]},"scopeSpans":[{"scope":{"name":"nginx","version":"1.31.6"},"spans":[{"traceId":"YLrRU2vhzS9bOb8CiDyWVg==","spanId":"05hYDohnzJU=","parentSpanId":"X3Fuu+6qz7s=","name":"GET orders-api","kind":"SPAN_KIND_SERVER","startTimeUnixNano":"1791032996218987008","endTimeUnixNano":"1791032996219987008","attributes":[{"key":"@jaeger@warnings","value":{"arrayValue":{"values":[{"stringValue":"clock skew adjustment disabled; not applying calculated delta of 408.5\u00b5s"},{"stringValue":"clock skew adjustment disabled; not applying calculated delta of 408.5\u00b5s"},{"stringValue":"clock skew adjustment disabled; not applying calculated delta of 408.5\u00b5s"}]}}},{"key":"component","value":{"stringValue":"proxy"}},{"key":"http.flavor","value":{"stringValue":"1.1"}},{"key":"http.request_content_length","value":{"intValue":"0"}},{"key":"http.response_content_length","value":{"intValue":"53"}},{"key":"http.scheme","value":{"stringValue":"http"}},{"key":"http.target","value":{"stringValue":"/api/orders/uuid"}},{"key":"http.user_agent","value":{"stringValue":"curl/8.22.0"}},{"key":"istio.canonical_revision","value":{"stringValue":"latest"}},{"key":"istio.canonical_service","value":{"stringValue":"orders-api"}},{"key":"istio.cluster_id","value":{"stringValue":"cluster1"}},{"key":"istio.mesh_id","value":{"stringValue":"cluster.local"}},{"key":"istio.namespace","value":{"stringValue":"api-orders"}},{"key":"net.host.name","value":{"stringValue":"orders-api.api-orders.svc.cluster.local"}},{"key":"net.host.port","value":{"intValue":"8080"}},{"key":"net.sock.peer.addr","value":{"stringValue":"10.244.1.41"}},{"key":"net.sock.peer.port","value":{"intValue":"38471"}},{"key":"node_id","value":{"stringValue":"sidecar~10.244.1.100~orders-api-5ff4d74bd7-7np6m.api-orders~api-orders.svc.cluster.local"}},{"key":"http.method","value":{"stringValue":"GET"}},{"key":"http.route","value":{"stringValue":"/"}},{"key":"http.status_code","value":{"intValue":"200"}}],"status":{}}]}]}]}
+{
+  "batches": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "host.name",
+            "value": {
+              "stringValue": "api-gateway.agentgateway-system.svc.cluster.local"
+            }
+          },
+          {
+            "key": "k8s.node.name",
+            "value": {
+              "stringValue": "istio-ambient-worker"
+            }
+          },
+          {
+            "key": "k8s.pod.ip",
+            "value": {
+              "stringValue": "10.244.1.177"
+            }
+          },
+          {
+            "key": "service.instance.id",
+            "value": {
+              "stringValue": "agentgateway~10.244.1.177~api-gateway-79ff864465-xhslf.agentgateway-system~agentgateway-system.svc.cluster.local"
+            }
+          },
+          {
+            "key": "service.namespace",
+            "value": {
+              "stringValue": "agentgateway-system"
+            }
+          },
+          {
+            "key": "service.version",
+            "value": {
+              "stringValue": "1.5.0"
+            }
+          },
+          {
+            "key": "telemetry.sdk.language",
+            "value": {
+              "stringValue": "rust"
+            }
+          },
+          {
+            "key": "telemetry.sdk.name",
+            "value": {
+              "stringValue": "opentelemetry"
+            }
+          },
+          {
+            "key": "telemetry.sdk.version",
+            "value": {
+              "stringValue": "0.32.1"
+            }
+          },
+          {
+            "key": "k8s.namespace.name",
+            "value": {
+              "stringValue": "agentgateway-system"
+            }
+          },
+          {
+            "key": "k8s.pod.name",
+            "value": {
+              "stringValue": "api-gateway-79ff864465-xhslf"
+            }
+          },
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "api-gateway.agentgateway-system"
+            }
+          }
+        ]
+      },
+      "scopeSpans": [
+        {
+          "scope": {
+            "name": "agentgateway"
+          },
+          "spans": [
+            {
+              "traceId": "YLrRU2vhzS9bOb8CiDyWVg==",
+              "spanId": "9jVF+sYMHLI=",
+              "name": "GET /api/orders/*",
+              "kind": "SPAN_KIND_SERVER",
+              "startTimeUnixNano": "1791032996217450464",
+              "endTimeUnixNano": "1791032996220948666",
+              "attributes": [
+                {
+                  "key": "api_class",
+                  "value": {
+                    "stringValue": "standard"
+                  }
+                },
+                {
+                  "key": "customer",
+                  "value": {
+                    "stringValue": "acme"
+                  }
+                },
+                {
+                  "key": "duration",
+                  "value": {
+                    "stringValue": "3ms"
+                  }
+                },
+                {
+                  "key": "endpoint",
+                  "value": {
+                    "stringValue": "orders-api.api-orders.svc.cluster.local:8080"
+                  }
+                },
+                {
+                  "key": "gateway",
+                  "value": {
+                    "stringValue": "agentgateway-system/api-gateway"
+                  }
+                },
+                {
+                  "key": "http.host",
+                  "value": {
+                    "stringValue": "api.istio.test"
+                  }
+                },
+                {
+                  "key": "http.path",
+                  "value": {
+                    "stringValue": "/api/orders/uuid"
+                  }
+                },
+                {
+                  "key": "http.status",
+                  "value": {
+                    "intValue": "200"
+                  }
+                },
+                {
+                  "key": "http.version",
+                  "value": {
+                    "stringValue": "HTTP/2.0"
+                  }
+                },
+                {
+                  "key": "istio.canonical_revision",
+                  "value": {
+                    "stringValue": "latest"
+                  }
+                },
+                {
+                  "key": "istio.canonical_service",
+                  "value": {
+                    "stringValue": "api-gateway"
+                  }
+                },
+                {
+                  "key": "istio.cluster_id",
+                  "value": {
+                    "stringValue": "cluster1"
+                  }
+                },
+                {
+                  "key": "istio.namespace",
+                  "value": {
+                    "stringValue": "agentgateway-system"
+                  }
+                },
+                {
+                  "key": "jwt.sub",
+                  "value": {
+                    "stringValue": "e8fe88eb-b40a-4c47-8552-80ec805e0814"
+                  }
+                },
+                {
+                  "key": "listener",
+                  "value": {
+                    "stringValue": "https"
+                  }
+                },
+                {
+                  "key": "network.protocol.version",
+                  "value": {
+                    "stringValue": "2"
+                  }
+                },
+                {
+                  "key": "protocol",
+                  "value": {
+                    "stringValue": "http"
+                  }
+                },
+                {
+                  "key": "route",
+                  "value": {
+                    "stringValue": "api-orders/orders"
+                  }
+                },
+                {
+                  "key": "route_rule",
+                  "value": {
+                    "stringValue": "orders-tree"
+                  }
+                },
+                {
+                  "key": "span.id",
+                  "value": {
+                    "stringValue": "f63545fac60c1cb2"
+                  }
+                },
+                {
+                  "key": "src.addr",
+                  "value": {
+                    "stringValue": "10.89.0.1:38371"
+                  }
+                },
+                {
+                  "key": "trace.id",
+                  "value": {
+                    "stringValue": "60bad1536be1cd2f5b39bf02883c9656"
+                  }
+                },
+                {
+                  "key": "url.scheme",
+                  "value": {
+                    "stringValue": "http"
+                  }
+                },
+                {
+                  "key": "http.method",
+                  "value": {
+                    "stringValue": "GET"
+                  }
+                }
+              ],
+              "status": {}
+            },
+            {
+              "traceId": "YLrRU2vhzS9bOb8CiDyWVg==",
+              "spanId": "B/fFvqQKNXQ=",
+              "parentSpanId": "9jVF+sYMHLI=",
+              "name": "RateLimit",
+              "kind": "SPAN_KIND_CLIENT",
+              "startTimeUnixNano": "1791032996217627801",
+              "endTimeUnixNano": "1791032996218848600",
+              "attributes": [
+                {
+                  "key": "agentgateway.outbound.kind",
+                  "value": {
+                    "stringValue": "Policy"
+                  }
+                },
+                {
+                  "key": "agentgateway.outbound.subtype",
+                  "value": {
+                    "stringValue": "RateLimit"
+                  }
+                },
+                {
+                  "key": "grpc.status",
+                  "value": {
+                    "intValue": "0"
+                  }
+                },
+                {
+                  "key": "http.host",
+                  "value": {
+                    "stringValue": "ratelimit.apigw-ratelimit.svc.cluster.local"
+                  }
+                },
+                {
+                  "key": "http.path",
+                  "value": {
+                    "stringValue": "/envoy.service.ratelimit.v3.RateLimitService/ShouldRateLimit"
+                  }
+                },
+                {
+                  "key": "http.method",
+                  "value": {
+                    "stringValue": "POST"
+                  }
+                }
+              ],
+              "status": {}
+            },
+            {
+              "traceId": "YLrRU2vhzS9bOb8CiDyWVg==",
+              "spanId": "2hxxvTE76y4=",
+              "parentSpanId": "9jVF+sYMHLI=",
+              "name": "GET orders-api.api-orders.svc.cluster.local:8080",
+              "kind": "SPAN_KIND_CLIENT",
+              "startTimeUnixNano": "1791032996218894126",
+              "endTimeUnixNano": "1791032996220914962",
+              "attributes": [
+                {
+                  "key": "agentgateway.outbound.kind",
+                  "value": {
+                    "stringValue": "Primary"
+                  }
+                },
+                {
+                  "key": "agentgateway.outbound.subtype",
+                  "value": {
+                    "stringValue": "Http"
+                  }
+                },
+                {
+                  "key": "http.host",
+                  "value": {
+                    "stringValue": "orders-api.api-orders.svc.cluster.local"
+                  }
+                },
+                {
+                  "key": "http.path",
+                  "value": {
+                    "stringValue": "/api/orders/uuid"
+                  }
+                },
+                {
+                  "key": "http.status",
+                  "value": {
+                    "intValue": "200"
+                  }
+                },
+                {
+                  "key": "http.method",
+                  "value": {
+                    "stringValue": "GET"
+                  }
+                }
+              ],
+              "status": {}
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "orders-api.api-orders"
+            }
+          }
+        ]
+      },
+      "scopeSpans": [
+        {
+          "scope": {
+            "name": "nginx",
+            "version": "1.31.6"
+          },
+          "spans": [
+            {
+              "traceId": "YLrRU2vhzS9bOb8CiDyWVg==",
+              "spanId": "05hYDohnzJU=",
+              "parentSpanId": "X3Fuu+6qz7s=",
+              "name": "GET orders-api",
+              "kind": "SPAN_KIND_SERVER",
+              "startTimeUnixNano": "1791032996218987008",
+              "endTimeUnixNano": "1791032996219987008",
+              "attributes": [
+                {
+                  "key": "@jaeger@warnings",
+                  "value": {
+                    "arrayValue": {
+                      "values": [
+                        {
+                          "stringValue": "clock skew adjustment disabled; not applying calculated delta of 408.5\u00b5s"
+                        },
+                        {
+                          "stringValue": "clock skew adjustment disabled; not applying calculated delta of 408.5\u00b5s"
+                        },
+                        {
+                          "stringValue": "clock skew adjustment disabled; not applying calculated delta of 408.5\u00b5s"
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "key": "component",
+                  "value": {
+                    "stringValue": "proxy"
+                  }
+                },
+                {
+                  "key": "http.flavor",
+                  "value": {
+                    "stringValue": "1.1"
+                  }
+                },
+                {
+                  "key": "http.request_content_length",
+                  "value": {
+                    "intValue": "0"
+                  }
+                },
+                {
+                  "key": "http.response_content_length",
+                  "value": {
+                    "intValue": "53"
+                  }
+                },
+                {
+                  "key": "http.scheme",
+                  "value": {
+                    "stringValue": "http"
+                  }
+                },
+                {
+                  "key": "http.target",
+                  "value": {
+                    "stringValue": "/api/orders/uuid"
+                  }
+                },
+                {
+                  "key": "http.user_agent",
+                  "value": {
+                    "stringValue": "curl/8.22.0"
+                  }
+                },
+                {
+                  "key": "istio.canonical_revision",
+                  "value": {
+                    "stringValue": "latest"
+                  }
+                },
+                {
+                  "key": "istio.canonical_service",
+                  "value": {
+                    "stringValue": "orders-api"
+                  }
+                },
+                {
+                  "key": "istio.cluster_id",
+                  "value": {
+                    "stringValue": "cluster1"
+                  }
+                },
+                {
+                  "key": "istio.mesh_id",
+                  "value": {
+                    "stringValue": "cluster.local"
+                  }
+                },
+                {
+                  "key": "istio.namespace",
+                  "value": {
+                    "stringValue": "api-orders"
+                  }
+                },
+                {
+                  "key": "net.host.name",
+                  "value": {
+                    "stringValue": "orders-api.api-orders.svc.cluster.local"
+                  }
+                },
+                {
+                  "key": "net.host.port",
+                  "value": {
+                    "intValue": "8080"
+                  }
+                },
+                {
+                  "key": "net.sock.peer.addr",
+                  "value": {
+                    "stringValue": "10.244.1.41"
+                  }
+                },
+                {
+                  "key": "net.sock.peer.port",
+                  "value": {
+                    "intValue": "38471"
+                  }
+                },
+                {
+                  "key": "node_id",
+                  "value": {
+                    "stringValue": "sidecar~10.244.1.100~orders-api-5ff4d74bd7-7np6m.api-orders~api-orders.svc.cluster.local"
+                  }
+                },
+                {
+                  "key": "http.method",
+                  "value": {
+                    "stringValue": "GET"
+                  }
+                },
+                {
+                  "key": "http.route",
+                  "value": {
+                    "stringValue": "/"
+                  }
+                },
+                {
+                  "key": "http.status_code",
+                  "value": {
+                    "intValue": "200"
+                  }
+                }
+              ],
+              "status": {}
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
