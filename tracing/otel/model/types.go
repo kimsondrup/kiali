@@ -3,7 +3,7 @@ package model
 import (
 	"time"
 
-	"github.com/kiali/kiali/tracing/otel/model/json"
+	"github.com/kiali/kiali/tracing/otel/otlp"
 )
 
 // Trace is a list of spans
@@ -29,11 +29,11 @@ type TagsResponse struct {
 // select(status), it answers with an attribute keyed "status" whose value is the TraceQL status
 // intrinsic as text - "unset", "ok" or "error".
 type Span struct {
-	SpanID            string           `json:"spanID"`
-	StartTimeUnixNano string           `json:"startTimeUnixNano"`
-	DurationNanos     string           `json:"durationNanos"`
-	Attributes        []json.Attribute `json:"attributes"`
-	Name              string           `json:"name"`
+	SpanID            string          `json:"spanID"`
+	StartTimeUnixNano string          `json:"startTimeUnixNano"`
+	DurationNanos     string          `json:"durationNanos"`
+	Attributes        otlp.Attributes `json:"attributes"`
+	Name              string          `json:"name"`
 }
 
 type SpanSet struct {
