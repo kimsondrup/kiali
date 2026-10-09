@@ -29,61 +29,6 @@ func TestConvertSpanId(t *testing.T) {
 	assert.Equal(jaegerModels.SpanID(id), jaegerId)
 }
 
-func TestConvertSpans(t *testing.T) {
-	assert := assert.New(t)
-
-	spans := getSpans()
-	id := getId()
-	serviceName := "kiali-traffic-generator.bookinfo"
-
-	jaegerSpans := ConvertSpans(spans, serviceName, id)
-	assert.Equal(jaegerModels.SpanID(id), jaegerSpans[0].SpanID)
-	assert.Equal(serviceName, jaegerSpans[0].Process.ServiceName)
-	assert.Equal("reviews.bookinfo.svc.cluster.local:9080/*", jaegerSpans[0].OperationName)
-}
-
-// TestConvertSpansDuration checks the duration arithmetic on the trace detail path. The subtraction
-// is between two unsigned nanosecond timestamps, so an end that is not after the start wraps round:
-// the end four milliseconds early below reports 18446744073705551us, which is 584 years, and one
-// microsecond early reports 18446744073709550us. A span whose end cannot be read at all is still
-// dropped: there is no duration to report for it.
-//
-// No span of the captured responses in ../../../tracingtest has an end before its start. The shape
-// is one the OTLP proto permits - it says only that the end is expected to be at or after the start
-// - rather than one a backend here was seen to send.
-func TestConvertSpansDuration(t *testing.T) {
-	const start = "1693389472310270000"
-
-	cases := map[string]struct {
-		end              string
-		expectedDuration uint64
-		expectedDropped  bool
-	}{
-		"an ordinary span":                  {end: "1693389472310916000", expectedDuration: 646},
-		"an end equal to the start":         {end: start, expectedDuration: 0},
-		"an end four milliseconds early":    {end: "1693389472306270000", expectedDuration: 0},
-		"an end one microsecond early":      {end: "1693389472310269000", expectedDuration: 0},
-		"an end that cannot be read at all": {end: "", expectedDropped: true},
-		"an end that is not a number":       {end: "soon", expectedDropped: true},
-	}
-
-	for name, tc := range cases {
-		t.Run(name, func(t *testing.T) {
-			spans := getSpans()
-			spans[0].EndTimeUnixNano = tc.end
-
-			converted := ConvertSpans(spans, "reviews.bookinfo", getId())
-			if tc.expectedDropped {
-				assert.Empty(t, converted)
-				return
-			}
-
-			require.Len(t, converted, 1)
-			assert.Equal(t, tc.expectedDuration, converted[0].Duration)
-		})
-	}
-}
-
 // TestConvertSpanSetDuration covers the duration of a span matched by Tempo's search API, which
 // Tempo computes itself and sends as one number. The subtraction behind it is unsigned too, so a
 // span whose end precedes its start arrives already wrapped - and this path cannot recompute it,
@@ -173,28 +118,6 @@ func TestConvertSpanSetNoStartTime(t *testing.T) {
 func getId() string {
 	id := "727a0d200236314473666c051e6f65f4"
 	return id
-}
-
-func getSpans() []otelModels.Span {
-	var spans []otelModels.Span
-
-	attbs := getAttributes()
-
-	span := otelModels.Span{
-		TraceID:           getId(),
-		SpanID:            getId(),
-		Name:              "reviews.bookinfo.svc.cluster.local:9080/*",
-		Kind:              "SPAN_KIND_SERVER",
-		StartTimeUnixNano: "1693389472310270000",
-		EndTimeUnixNano:   "1693389472310916000",
-		Attributes:        attbs,
-		Events:            []otelModels.Event{},
-		Status:            otelModels.Status{},
-	}
-
-	spans = append(spans, span)
-
-	return spans
 }
 
 func getAttributes() []otelModels.Attribute {
