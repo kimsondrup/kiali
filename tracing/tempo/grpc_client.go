@@ -131,11 +131,22 @@ func (jc TempoGRPCClient) GetServicesList(ctx context.Context) ([]string, error)
 	return services, err
 }
 
-// processStream
+// processStream reports each trace of a Tempo search stream once.
+//
+// Tempo's StreamingQuerier.Search streams cumulative snapshots: every message repeats the traces
+// the earlier messages carried, with whatever more it has found for them since, so appending each
+// message reports one trace several times - a stream of [t1] and then [t1, t2] becomes three rows
+// for two traces, and the traces list shows the duplicates. Keeping the latest version of each
+// trace ID and accumulating the IDs across messages is correct under that framing and under
+// chunking as well, where an ID does not repeat and every message contributes.
+//
+// The key is the padded trace ID ConvertTraceMetadata reports, not the spelling Tempo sent, so
+// the same trace counts once however many leading zeros a given message left off.
 func processStream(ctx context.Context, stream tempopb.StreamingQuerier_SearchClient, serviceName string) ([]jaegerModels.Trace, error) {
 	zl := getLoggerFromContextGRPCTempo(ctx)
 
-	tracesMap := []jaegerModels.Trace{}
+	order := []jaegerModels.TraceID{}
+	latest := map[jaegerModels.TraceID]jaegerModels.Trace{}
 
 	for received, err := stream.Recv(); err != io.EOF; received, err = stream.Recv() {
 		if err != nil {
@@ -150,12 +161,20 @@ func processStream(ctx context.Context, stream tempopb.StreamingQuerier_SearchCl
 			batchTrace, err := converter.ConvertTraceMetadata(*trace, serviceName)
 			if err != nil {
 				zl.Error().Msgf("[gRPC Tempo] Error getting trace detail for %s: %s", trace.TraceID, err.Error())
-			} else {
-				tracesMap = append(tracesMap, *batchTrace)
+				continue
 			}
+			if _, seen := latest[batchTrace.TraceID]; !seen {
+				order = append(order, batchTrace.TraceID)
+			}
+			latest[batchTrace.TraceID] = *batchTrace
 		}
 	}
-	return tracesMap, nil
+
+	traces := make([]jaegerModels.Trace, 0, len(order))
+	for _, traceID := range order {
+		traces = append(traces, latest[traceID])
+	}
+	return traces, nil
 }
 
 // processServices
