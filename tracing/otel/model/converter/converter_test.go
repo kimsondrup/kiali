@@ -17,6 +17,7 @@ import (
 	jaegerModels "github.com/kiali/kiali/tracing/jaeger/model/json"
 	otel "github.com/kiali/kiali/tracing/otel/model"
 	"github.com/kiali/kiali/tracing/tempo/tempopb"
+	v1 "github.com/kiali/kiali/tracing/tempo/tempopb/common/v1"
 )
 
 func TestConvertId(t *testing.T) {
@@ -307,6 +308,92 @@ func TestConvertAttributesNamesAnUnreadVariant(t *testing.T) {
 	assert.Contains(t, text, "span 2e6ca056f5fc6fdc")
 	assert.NotContains(t, text, "probe.unset")
 	assert.NotContains(t, text, "http.method")
+}
+
+// TestConvertModelAttributes covers the same attributes on Tempo's gRPC search path, which is the
+// path Kiali's Tempo provider takes by default. They were read through GetStringValue alone with
+// the tag type hard-coded to string, so every number, boolean, array and kvlist reached the span
+// detail table with a key and no value, where the HTTP path beside it reported them correctly.
+func TestConvertModelAttributes(t *testing.T) {
+	cases := map[string]struct {
+		value     *v1.AnyValue
+		wantValue any
+		wantType  jaegerModels.ValueType
+	}{
+		"a string": {
+			value:     &v1.AnyValue{Value: &v1.AnyValue_StringValue{StringValue: "HTTP/1.1"}},
+			wantValue: "HTTP/1.1", wantType: jaegerModels.StringType,
+		},
+		"an int": {
+			value:     &v1.AnyValue{Value: &v1.AnyValue_IntValue{IntValue: 503}},
+			wantValue: int64(503), wantType: jaegerModels.Int64Type,
+		},
+		"a bool": {
+			value:     &v1.AnyValue{Value: &v1.AnyValue_BoolValue{BoolValue: true}},
+			wantValue: true, wantType: jaegerModels.BoolType,
+		},
+		"a double": {
+			value:     &v1.AnyValue{Value: &v1.AnyValue_DoubleValue{DoubleValue: 1.5}},
+			wantValue: 1.5, wantType: jaegerModels.Float64Type,
+		},
+		"a double that is not a number": {
+			value:     &v1.AnyValue{Value: &v1.AnyValue_DoubleValue{DoubleValue: math.NaN()}},
+			wantValue: "NaN", wantType: jaegerModels.StringType,
+		},
+		"bytes": {
+			value:     &v1.AnyValue{Value: &v1.AnyValue_BytesValue{BytesValue: []byte{10, 0, 0, 1}}},
+			wantValue: []byte{10, 0, 0, 1}, wantType: jaegerModels.BinaryType,
+		},
+		"an array": {
+			value: &v1.AnyValue{Value: &v1.AnyValue_ArrayValue{ArrayValue: &v1.ArrayValue{
+				Values: []*v1.AnyValue{{Value: &v1.AnyValue_StringValue{StringValue: "*/*"}}},
+			}}},
+			wantValue: `["*/*"]`, wantType: jaegerModels.StringType,
+		},
+		"an array holding a double that is not a number": {
+			value: &v1.AnyValue{Value: &v1.AnyValue_ArrayValue{ArrayValue: &v1.ArrayValue{
+				Values: []*v1.AnyValue{
+					{Value: &v1.AnyValue_DoubleValue{DoubleValue: 1.5}},
+					{Value: &v1.AnyValue_DoubleValue{DoubleValue: math.Inf(1)}},
+				},
+			}}},
+			wantValue: `[1.5,"+Inf"]`, wantType: jaegerModels.StringType,
+		},
+		"a map": {
+			value: &v1.AnyValue{Value: &v1.AnyValue_KvlistValue{KvlistValue: &v1.KeyValueList{
+				Values: []*v1.KeyValue{{Key: "k", Value: &v1.AnyValue{Value: &v1.AnyValue_IntValue{IntValue: 7}}}},
+			}}},
+			wantValue: `{"k":7}`, wantType: jaegerModels.StringType,
+		},
+		"no variant set":  {value: &v1.AnyValue{}, wantValue: "", wantType: jaegerModels.StringType},
+		"no value at all": {wantValue: "", wantType: jaegerModels.StringType},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			tags := convertModelAttributes([]*v1.KeyValue{{Key: "k", Value: tc.value}})
+			require.Len(t, tags, 1)
+			assert.Equal(t, jaegerModels.KeyValue{Key: "k", Value: tc.wantValue, Type: tc.wantType}, tags[0])
+		})
+	}
+}
+
+// TestConvertModelAttributesStatus checks that the TraceQL status intrinsic is read the same way
+// on both of Tempo's search transports. An error becomes the boolean tag the frontend reads; any
+// other value stays a tag of its own, which the gRPC path used to drop - so a span whose status
+// was "unset" arrived over gRPC with one tag fewer than over HTTP.
+func TestConvertModelAttributesStatus(t *testing.T) {
+	text := func(value string) *v1.AnyValue {
+		return &v1.AnyValue{Value: &v1.AnyValue_StringValue{StringValue: value}}
+	}
+
+	failed := convertModelAttributes([]*v1.KeyValue{{Key: "status", Value: text("error")}})
+	assert.Equal(t, []jaegerModels.KeyValue{{Key: "error", Value: true, Type: jaegerModels.BoolType}}, failed)
+
+	for _, value := range []string{"ok", "unset"} {
+		tags := convertModelAttributes([]*v1.KeyValue{{Key: "status", Value: text(value)}})
+		assert.Equal(t, []jaegerModels.KeyValue{{Key: "status", Value: value, Type: jaegerModels.StringType}}, tags)
+	}
 }
 
 // TestConvertSpanSetNoStartTime covers a span that Tempo's search API answers with and that carries
