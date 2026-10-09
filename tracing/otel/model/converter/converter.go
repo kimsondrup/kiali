@@ -130,7 +130,7 @@ func ConvertSpanSet(span otel.Span, serviceName string, traceId string, rootName
 		Flags: 0,
 		// OperationName: span.Name,
 		References:    []jaegerModels.Reference{},
-		Tags:          convertAttributes(span.Attributes, span.Status),
+		Tags:          convertAttributes(span.Attributes),
 		Logs:          []jaegerModels.Log{},
 		OperationName: operationName,
 		ProcessID:     "",
@@ -143,7 +143,12 @@ func ConvertSpanSet(span otel.Span, serviceName string, traceId string, rootName
 	return toRet
 }
 
-func convertAttributes(attributes []otelModels.Attribute, status otelModels.Status) []jaegerModels.KeyValue {
+// convertAttributes reports the attributes of a span matched by Tempo's search API as span tags.
+//
+// There is no status to report alongside them: Tempo writes no span-level status on this path,
+// and the status it does report arrives as the "status" attribute below. The span status is a
+// real thing on the trace detail path, where the response is OTLP and statusTags reads it.
+func convertAttributes(attributes []otelModels.Attribute) []jaegerModels.KeyValue {
 	var tags []jaegerModels.KeyValue
 	for _, atb := range attributes {
 		if atb.Key == "status" && atb.Value.StringValue == "error" {
@@ -153,11 +158,6 @@ func convertAttributes(attributes []otelModels.Attribute, status otelModels.Stat
 			tag := jaegerModels.KeyValue{Key: atb.Key, Value: atb.Value.StringValue, Type: "string"}
 			tags = append(tags, tag)
 		}
-	}
-	// When Span Status is set to ERROR, an error span tag MUST be added with the Boolean value of true
-	if status.Code == "STATUS_CODE_ERROR" {
-		tag := jaegerModels.KeyValue{Key: "error", Value: true, Type: "bool"}
-		tags = append(tags, tag)
 	}
 	return tags
 }
