@@ -172,6 +172,37 @@ func TestConvertTraceMetadataOperationName(t *testing.T) {
 	assert.Equal(t, "productpage.bookinfo.svc.cluster.local:9080/productpage", converted.Spans[1].OperationName)
 }
 
+// TestConvertTraceMetadataProcessTable covers the process table a Tempo search result reports.
+// Tempo's search answer carries no resource, so the table has to be minted from the one service
+// name the answer names - and business.tracesToSpans selects a service's spans by looking a
+// span's process ID up in it, so a trace without one contributes no span at all.
+func TestConvertTraceMetadataProcessTable(t *testing.T) {
+	span := func(id string) *querypb.Span {
+		return &querypb.Span{
+			SpanID:            id,
+			Name:              "reviews.bookinfo.svc.cluster.local:9080/*",
+			StartTimeUnixNano: 1693389472310270000,
+			DurationNanos:     646000,
+		}
+	}
+
+	converted := ConvertTraceMetadata(&querypb.TraceSearchMetadata{
+		TraceID: "b70b02766cb83333631f6654cc518265",
+		SpanSet: &querypb.SpanSet{Spans: []*querypb.Span{span("2e6ca056f5fc6fdc"), span("5d7ab9e039d25ebd")}},
+	}, "reviews.bookinfo")
+
+	// One service name is one entry, however many spans report it.
+	require.Equal(t, []jsonModel.ProcessID{"p1"}, processIDs(*converted))
+	assert.Equal(t, "reviews.bookinfo", converted.Processes["p1"].ServiceName)
+
+	require.Len(t, converted.Spans, 2)
+	for _, span := range converted.Spans {
+		process, found := converted.Processes[span.ProcessID]
+		require.True(t, found, "span [%s] refers to no process of the table", span.SpanID)
+		assert.Equal(t, "reviews.bookinfo", process.ServiceName)
+	}
+}
+
 // TestConvertTraceMetadataWithoutSpanSet covers the gRPC half of the same answer. Its span set is
 // a pointer, so a TraceSearchMetadata that carries none is a nil dereference rather than an empty
 // range - a SIGSEGV on the path every Tempo traces list takes, reached from processStream.

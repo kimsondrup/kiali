@@ -32,27 +32,6 @@ func convertSpanId(id string) jsonModel.SpanID {
 	return jsonModel.SpanID(id)
 }
 
-// SearchTrace assembles the Jaeger-shaped trace a Tempo search result becomes. Both of Tempo's
-// search transports end here, so the fields the frontend reads without checking are set in one
-// place rather than guarded at each call site.
-//
-// Spans, Processes and Warnings are set whether or not the result carried any spans. A nil slice
-// or map serialises as JSON null, and the frontend's transformTraceData reads all three without
-// checking, so a trace with no spans would take the Traces tab down with a TypeError instead of
-// rendering as an empty trace.
-func SearchTrace(traceID jsonModel.TraceID, spans []jsonModel.Span, matched int) jsonModel.Trace {
-	if spans == nil {
-		spans = []jsonModel.Span{}
-	}
-	return jsonModel.Trace{
-		TraceID:   traceID,
-		Spans:     spans,
-		Matched:   matched,
-		Processes: map[jsonModel.ProcessID]jsonModel.Process{},
-		Warnings:  []string{},
-	}
-}
-
 // ConvertTraceMetadata reports a trace matched by Tempo's search API as a Jaeger-shaped trace.
 // Both of Tempo's search transports reach it, because the search answer is the same document
 // whether it arrived as protobuf over the streaming RPC or as JSON over /api/search.
@@ -61,8 +40,14 @@ func SearchTrace(traceID jsonModel.TraceID, spans []jsonModel.Span, matched int)
 // what go vet's copylocks reports.
 func ConvertTraceMetadata(trace *querypb.TraceSearchMetadata, serviceName string) *jsonModel.Trace {
 	traceID := ConvertId(trace.GetTraceID())
+	builder := newTraceBuilder(traceID)
 
-	var spans []jsonModel.Span
+	// Tempo's search answer carries no resource, so the process is the one service name the
+	// answer names for the whole trace: the service the query asked for over gRPC, and the one
+	// the matched spans report over HTTP. The table is minted here all the same, because the
+	// business layer selects a service's spans by looking a span's process up in it.
+	process := jsonModel.Process{ServiceName: serviceName, Tags: []jsonModel.KeyValue{}}
+
 	// A matched trace carries the spans that matched, and a trace reporting only its statistics
 	// carries no span set at all. The field is a pointer, so reaching into it is a nil
 	// dereference rather than an empty range.
@@ -71,14 +56,15 @@ func ConvertTraceMetadata(trace *querypb.TraceSearchMetadata, serviceName string
 		if !ok {
 			continue
 		}
-		spans = append(spans, converted)
+		builder.add(converted, process)
 	}
 
+	converted := builder.trace()
 	// Matched is the number of spans of this trace the query matched, which the scatter plot
 	// draws a trace's bubble from. It is not len(spans): SpansPerSpanSet bounds how many of them
 	// the answer carries, so a trace that matched six spans arrives with ten at most.
-	jaegerTrace := SearchTrace(traceID, spans, int(trace.GetSpanSet().GetMatched()))
-	return &jaegerTrace
+	converted.Matched = int(trace.GetSpanSet().GetMatched())
+	return &converted
 }
 
 // convertOtelSpan reports one span matched by Tempo's search API as a Jaeger span. The second
@@ -125,8 +111,6 @@ func convertOtelSpan(span *querypb.Span, serviceName string, traceID jsonModel.T
 		Tags:          convertAttributes(span.GetAttributes(), spanID),
 		Logs:          []jsonModel.Log{},
 		OperationName: operationName,
-		ProcessID:     "",
-		Process:       &jsonModel.Process{Tags: []jsonModel.KeyValue{}, ServiceName: serviceName},
 		Warnings:      []string{},
 	}
 

@@ -2,15 +2,20 @@ package business
 
 import (
 	"context"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/encoding/protojson"
 	"k8s.io/apimachinery/pkg/runtime"
 
 	"github.com/kiali/kiali/config"
 	"github.com/kiali/kiali/kubernetes/kubetest"
 	"github.com/kiali/kiali/models"
 	jsonModel "github.com/kiali/kiali/models/tracing/json"
+	"github.com/kiali/kiali/tracing/otel/model/converter"
+	"github.com/kiali/kiali/tracing/tempo/querypb"
 )
 
 func getLayer(t *testing.T, conf *config.Config) *Layer {
@@ -198,6 +203,37 @@ func TestTracesToSpanWithoutFilter(t *testing.T) {
 	assert.Len(spans, 2)
 	assert.Equal("t2_process_2", string(spans[0].ProcessID))
 	assert.Equal("t2_process_3", string(spans[1].ProcessID))
+}
+
+// TestTracesToSpanAgreesAcrossProviders reads one captured Tempo search answer through the
+// converter both of Tempo's search transports use, and selects its spans the way each provider
+// is selected for: by the process table, and by the process embedded in a span. The two have to
+// name the same spans, because the business layer is the one place that has no business knowing
+// which provider answered.
+func TestTracesToSpanAgreesAcrossProviders(t *testing.T) {
+	const serviceName = "reviews.bookinfo"
+
+	body, err := os.ReadFile("../tracing/tracingtest/response.json")
+	require.NoError(t, err)
+	var search querypb.SearchResponse
+	require.NoError(t, protojson.UnmarshalOptions{DiscardUnknown: true}.Unmarshal(body, &search))
+	require.NotEmpty(t, search.GetTraces())
+
+	r := models.TracingResponse{TracingServiceName: serviceName}
+	for _, trace := range search.GetTraces() {
+		r.Data = append(r.Data, *converter.ConvertTraceMetadata(trace, serviceName))
+	}
+
+	app := models.TracingName{App: "reviews", Lookup: "reviews"}
+	tempoConf, jaegerConf := config.NewConfig(), config.NewConfig()
+	tempoConf.ExternalServices.Tracing.Provider = config.TempoProvider
+	jaegerConf.ExternalServices.Tracing.Provider = config.JaegerProvider
+
+	byTable := tracesToSpans(context.Background(), app, &r, nil, jaegerConf)
+	byEmbeddedProcess := tracesToSpans(context.Background(), app, &r, nil, tempoConf)
+
+	assert.NotEmpty(t, byTable)
+	assert.Equal(t, byTable, byEmbeddedProcess)
 }
 
 func TestTracesToSpanWithServiceFilter(t *testing.T) {

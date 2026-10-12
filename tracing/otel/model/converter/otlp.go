@@ -121,13 +121,21 @@ func (b *traceBuilder) processID(process jsonModel.Process) jsonModel.ProcessID 
 	return id
 }
 
+// trace reports the assembled trace. Spans, Processes and Warnings are set whether or not the
+// trace carried any spans: a nil slice or map serialises as JSON null, and the frontend's
+// transformTraceData reads all three without checking, so a trace with no spans would take the
+// Traces tab down with a TypeError instead of rendering as an empty trace.
 func (b *traceBuilder) trace() jsonModel.Trace {
+	spans := b.spans
+	if spans == nil {
+		spans = []jsonModel.Span{}
+	}
 	return jsonModel.Trace{
 		TraceID:   b.traceID,
-		Spans:     b.spans,
+		Spans:     spans,
 		Processes: b.processes,
 		Warnings:  []string{},
-		Matched:   len(b.spans),
+		Matched:   len(spans),
 	}
 }
 
