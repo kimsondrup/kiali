@@ -52,6 +52,7 @@ Feature: Kiali App Details page
   @tracing
   Scenario: See span info after selecting app span
     And user sees trace information
+    And user sees distinct traces with spans
     When user selects a trace with at least 6 spans
     Then user sees span details
     And user can filter spans by app "productpage"

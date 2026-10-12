@@ -59,6 +59,7 @@ Feature: Kiali Workload Details page
   # TODO: offline - tracing support.
   Scenario: See workload span info after selecting a span
     And user sees trace information
+    And user sees distinct traces with spans
     When user selects a trace with at least 6 spans
     And user sees span details
     And user can filter spans by workload "details-v1"

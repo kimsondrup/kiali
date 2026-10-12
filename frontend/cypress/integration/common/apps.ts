@@ -131,6 +131,34 @@ Then('user sees trace details', () => {
   cy.getBySel('trace-details-dropdown').contains('View on Graph');
 });
 
+Then('user sees distinct traces with spans', () => {
+  cy.getBySel('tracing-scatterplot').should('exist');
+
+  cy.waitForReact();
+  cy.getReact('*oint', { props: { symbol: 'circle' } })
+    .should('have.length.at.least', 1)
+    .then(($points: any) => {
+      // getReact resolves against the whole mounted app, so keep only the points that carry a
+      // trace, the way the steps that select a point by span count do.
+      const traces = $points.map(point => point.props?.datum?.trace).filter(trace => trace?.traceID);
+
+      expect(traces.length, 'plotted traces').to.be.at.least(1);
+
+      const traceIDs = traces.map(trace => trace.traceID);
+
+      // The plot draws one point per trace row the API returned, so a trace the search path
+      // emitted more than once shows up here as a repeated ID.
+      expect(new Set(traceIDs).size, 'distinct trace IDs').to.equal(traceIDs.length);
+
+      const spanCounts = traces.map(trace => trace.spans?.length ?? 0);
+
+      spanCounts.forEach((count, i) => expect(count, `spans of trace ${traceIDs[i]}`).to.be.greaterThan(0));
+
+      // Six is the span count the steps that follow select on.
+      expect(Math.max(...spanCounts), 'largest span count').to.be.at.least(6);
+    });
+});
+
 When('user hovers over a trace with at least {int} spans', (spans: number) => {
   cy.getBySel('tracing-scatterplot').within(() => {
     // Victory can render points in an initial transient position before settling them.
