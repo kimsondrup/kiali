@@ -33,10 +33,6 @@ type TracingSpan struct {
 	TraceSize int `json:"traceSize"`
 }
 
-type Services struct {
-	Data []string `json:"data"`
-}
-
 type ParsedUrl struct {
 	BaseUrl string   `json:"baseUrl"`
 	Host    string   `json:"host"`
@@ -65,14 +61,6 @@ type TracingDiagnose struct {
 type ConfigurationValidation struct {
 	Error   string `json:"error"`
 	Message string `json:"message"`
-}
-
-type TracingService struct {
-	Data   []string          `json:"data"`
-	Total  int               `json:"total"`
-	Limit  int               `json:"limit"`
-	Offset int               `json:"offset"`
-	Errors []StructuredError `json:"errors"`
 }
 
 type LogLine struct {
