@@ -25,9 +25,12 @@ type scriptedQuerier struct {
 
 	failWith error
 	messages []*querypb.SearchResponse
+	// received is the last request the client sent, so a test can assert on the query it built.
+	received *querypb.SearchRequest
 }
 
 func (s *scriptedQuerier) Search(req *querypb.SearchRequest, srv querypb.StreamingQuerier_SearchServer) error {
+	s.received = req
 	for _, message := range s.messages {
 		if err := srv.Send(message); err != nil {
 			return err
@@ -76,12 +79,20 @@ func clientOver(t *testing.T, d func(context.Context, string) (net.Conn, error))
 	return client
 }
 
+// searchClient dials querier over a real gRPC connection, so the client code under test speaks
+// the protocol it speaks to Tempo.
+func searchClient(t *testing.T, querier querypb.StreamingQuerierServer) *TempoGRPCClient {
+	t.Helper()
+
+	return clientOver(t, dialer(querier))
+}
+
 // searchStream opens a real gRPC stream against querier, so the client code under test reads the
 // messages the way it reads Tempo's.
 func searchStream(t *testing.T, querier querypb.StreamingQuerierServer) querypb.StreamingQuerier_SearchClient {
 	t.Helper()
 
-	stream, err := clientOver(t, dialer(querier)).StreamingClient.Search(context.Background(), &querypb.SearchRequest{})
+	stream, err := searchClient(t, querier).StreamingClient.Search(context.Background(), &querypb.SearchRequest{})
 	require.NoError(t, err)
 	return stream
 }

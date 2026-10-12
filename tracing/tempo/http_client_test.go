@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/kiali/kiali/config"
 	"github.com/kiali/kiali/models"
 	"github.com/kiali/kiali/models/tracing/json"
 )
@@ -404,46 +405,43 @@ func TestGetTracesErrorsOnlyFromFixture(t *testing.T) {
 		json.KeyValue{Key: "error", Value: true, Type: json.BoolType})
 }
 
-func TestGetTracesErrorsOnly(t *testing.T) {
-	baseUrl := getBaseUrl()
+// TestErrorTagIsOneQueryOnBothTransports covers the tag Kiali asks a backend for the failed
+// traces of a service with. tracing.GetErrorTraces always sends error="true" and the transport is
+// chosen from configuration, so a tag that selects by HTTP status code on one transport and by an
+// error attribute on the other makes the error count on a service's overview depend on which one
+// is configured.
+//
+// Measured against a live Tempo: .http.status_code != 200 matches no trace of an ambient
+// waypoint, because the waypoint's spans carry no such attribute, and quoting the 200 - which is
+// what the builder does with a string operand - matches every trace instead of the failed ones.
+func TestErrorTagIsOneQueryOnBothTransports(t *testing.T) {
+	// The gRPC search bounds itself by the configured query timeout, which is zero in a config
+	// nothing has set.
+	config.Set(config.NewConfig())
 
-	span := func(id, attributes string) string {
-		return `{"spanID":"` + id + `","startTimeUnixNano":"1701779876570888000","durationNanos":"1000",` +
-			`"attributes":[{"key":"service.name","value":{"stringValue":"orders-api"}}` + attributes + `]}`
-	}
-	status := func(value string) string {
-		return `,{"key":"status","value":{"stringValue":"` + value + `"}}`
-	}
-	body := `{"traces":[` +
-		`{"traceID":"aa00000000000000000000000000000a","spanSet":{"spans":[` + span("0101010101010101", status("unset")) + `]}},` +
-		`{"traceID":"bb00000000000000000000000000000b","spanSet":{"spans":[` + span("0202020202020202", status("error")) + `]}},` +
-		`{"traceID":"cc00000000000000000000000000000c","spanSet":{"spans":[` + span("0303030303030303", status("ok")) + `]}},` +
-		`{"traceID":"dd00000000000000000000000000000d","spanSet":{"spans":[` + span("0404040404040404", "") + `]}}` +
-		`]}`
-
-	httpClient := http.Client{Transport: RoundTripFunc(func(req *http.Request) *http.Response {
-		return &http.Response{
-			StatusCode: http.StatusOK,
-			Body:       io.NopCloser(strings.NewReader(body)),
-		}
-	})}
+	query := models.TracingQuery{Tags: map[string]string{"error": "true"}}
 
 	tempoClient, err := NewOtelClient(context.TODO())
 	require.NoError(t, err)
-
-	all, err := tempoClient.GetAppTracesHTTP(context.Background(), httpClient, baseUrl, serviceName, models.TracingQuery{})
+	overHTTP, err := url.QueryUnescape(tempoClient.GetTraceQLQuery(context.Background(), getBaseUrl(), serviceName, query))
 	require.NoError(t, err)
-	assert.Equal(t, 4, len(all.Data))
 
-	failed, err := tempoClient.GetAppTracesHTTP(context.Background(), httpClient, baseUrl, serviceName,
-		models.TracingQuery{Tags: map[string]string{"error": "true"}})
+	querier := &scriptedQuerier{}
+	_, err = searchClient(t, querier).FindTraces(context.Background(), serviceName, query)
 	require.NoError(t, err)
-	require.Equal(t, 1, len(failed.Data))
-	assert.Equal(t, json.TraceID("bb00000000000000000000000000000b"), failed.Data[0].TraceID)
-	// the errored span reports the boolean tag Kiali's frontend reads, not the attribute
-	require.Equal(t, 1, len(failed.Data[0].Spans))
-	assert.Contains(t, failed.Data[0].Spans[0].Tags,
-		json.KeyValue{Key: "error", Value: true, Type: json.BoolType})
+	require.NotNil(t, querier.received)
+	overGRPC := querier.received.GetQuery()
+
+	for name, sent := range map[string]string{"http": overHTTP, "grpc": overGRPC} {
+		t.Run(name, func(t *testing.T) {
+			// The TraceQL status intrinsic, which Tempo derives from the OTLP span status. It is
+			// also the signal the select list asks for and the one the converter mints the error
+			// tag from, so the query and the answer agree on one definition of a failed span.
+			assert.Contains(t, sent, "status = error")
+			assert.NotContains(t, sent, ".http.status_code")
+			assert.NotContains(t, sent, `.error = "true"`)
+		})
+	}
 }
 
 // TestGetTracesWithoutSpanSet covers a Tempo search answer that reports only its statistics.

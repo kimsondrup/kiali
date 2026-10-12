@@ -39,14 +39,7 @@ func (jc TempoGRPCClient) FindTraces(ctx context.Context, serviceName string, q 
 	// Create query
 	queryPart1 := TraceQL{operator1: ".service.name", operand: EQUAL, operator2: serviceName}
 	queryPart2 := TraceQL{operator1: ".node_id", operand: REGEX, operator2: ".*"}
-	queryPart := TraceQL{operator1: queryPart1, operand: AND, operator2: queryPart2}
-
-	if len(q.Tags) > 0 {
-		for k, v := range q.Tags {
-			tag := TraceQL{operator1: "." + k, operand: EQUAL, operator2: v}
-			queryPart = TraceQL{operator1: queryPart, operand: AND, operator2: tag}
-		}
-	}
+	queryPart := queryTags(TraceQL{operator1: queryPart1, operand: AND, operator2: queryPart2}, q.Tags)
 
 	selects := []string{
 		"status",

@@ -60,7 +60,7 @@ func (oc *OtelHTTPClient) GetAppTracesHTTP(ctx context.Context, client http.Clie
 	}
 	oc.prepareTraceQL(ctx, &url, serviceName, q)
 
-	r, err := oc.queryTracesHTTP(ctx, client, &url, q.Tags["error"])
+	r, err := oc.queryTracesHTTP(ctx, client, &url)
 
 	if r != nil {
 		r.TracingServiceName = serviceName
@@ -159,7 +159,7 @@ func (oc *OtelHTTPClient) GetServices(ctx context.Context, client http.Client, b
 }
 
 // queryTracesHTTP
-func (oc *OtelHTTPClient) queryTracesHTTP(ctx context.Context, client http.Client, u *url.URL, error string) (*models.TracingResponse, error) {
+func (oc *OtelHTTPClient) queryTracesHTTP(ctx context.Context, client http.Client, u *url.URL) (*models.TracingResponse, error) {
 
 	zl := getLoggerFromContextHTTPTempo(ctx)
 
@@ -192,12 +192,11 @@ func (oc *OtelHTTPClient) queryTracesHTTP(ctx context.Context, client http.Clien
 		return &models.TracingResponse{}, errUnmarshal
 	}
 
-	return oc.transformTrace(response, error, limit), nil
+	return oc.transformTrace(response, limit), nil
 }
 
-// transformTrace reports the traces a Tempo search matched, dropping those the caller filtered
-// out.
-func (oc *OtelHTTPClient) transformTrace(traces *querypb.SearchResponse, error string, limit int) *models.TracingResponse {
+// transformTrace reports the traces a Tempo search matched.
+func (oc *OtelHTTPClient) transformTrace(traces *querypb.SearchResponse, limit int) *models.TracingResponse {
 	var response models.TracingResponse
 	serviceName := ""
 
@@ -209,9 +208,6 @@ func (oc *OtelHTTPClient) transformTrace(traces *querypb.SearchResponse, error s
 		// statistics carries none; the service name then stays whatever the last one gave
 		if spans := trace.GetSpanSet().GetSpans(); len(spans) > 0 {
 			serviceName = getServiceName(spans[0].GetAttributes())
-		}
-		if error == "true" && !hasErrors(trace) {
-			continue
 		}
 		response.Data = append(response.Data, *converter.ConvertTraceMetadata(trace, serviceName))
 	}
@@ -271,19 +267,7 @@ func (oc *OtelHTTPClient) prepareTraceQL(ctx context.Context, u *url.URL, tracin
 	q.Set("end", fmt.Sprintf("%d", query.End.Unix()))
 
 	// For Ambient, the service name is the waypoint
-	queryPart := TraceQL{operator1: ".service.name", operand: EQUAL, operator2: tracingServiceName}
-
-	if len(query.Tags) > 0 {
-		for k, v := range query.Tags {
-			var tag TraceQL
-			if k == "error" {
-				tag = TraceQL{operator1: ".http.status_code", operand: NOTEQUAL, operator2: "200"}
-			} else {
-				tag = TraceQL{operator1: "." + k, operand: EQUAL, operator2: v}
-			}
-			queryPart = TraceQL{operator1: queryPart, operand: AND, operator2: tag}
-		}
-	}
+	queryPart := queryTags(TraceQL{operator1: ".service.name", operand: EQUAL, operator2: tracingServiceName}, query.Tags)
 
 	selects := []string{
 		"status",
@@ -325,20 +309,6 @@ func (oc *OtelHTTPClient) prepareTraceQL(ctx context.Context, u *url.URL, tracin
 func (oc *OtelHTTPClient) GetTraceQLQuery(ctx context.Context, u *url.URL, tracingServiceName string, query models.TracingQuery) string {
 	oc.prepareTraceQL(ctx, u, tracingServiceName, query)
 	return u.RawQuery
-}
-
-// hasErrors reports whether a matched span of the trace failed. The signal is the "status"
-// attribute, which is the TraceQL status intrinsic prepareTraceQL selects: Tempo answers it as
-// text, and "error" is the value it uses for a span whose OTLP status code is ERROR.
-func hasErrors(trace *querypb.TraceSearchMetadata) bool {
-	for _, span := range trace.GetSpanSet().GetSpans() {
-		for _, atb := range span.GetAttributes() {
-			if atb.GetKey() == "status" && atb.GetValue().GetStringValue() == "error" {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 func getServiceName(attributes []*commonpb.KeyValue) string {
