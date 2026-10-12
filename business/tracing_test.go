@@ -10,7 +10,6 @@ import (
 	"github.com/kiali/kiali/config"
 	"github.com/kiali/kiali/kubernetes/kubetest"
 	"github.com/kiali/kiali/models"
-	"github.com/kiali/kiali/tracing/jaeger/model"
 	jaegerModels "github.com/kiali/kiali/tracing/jaeger/model/json"
 )
 
@@ -180,7 +179,7 @@ func TestMatchingWorkload(t *testing.T) {
 func TestTracesToSpanWithoutFilter(t *testing.T) {
 	assert := assert.New(t)
 
-	r := model.TracingResponse{
+	r := models.TracingResponse{
 		Data:               []jaegerModels.Trace{trace1, trace2},
 		TracingServiceName: "reviews.default",
 	}
@@ -190,7 +189,7 @@ func TestTracesToSpanWithoutFilter(t *testing.T) {
 	assert.Equal("t1_process_1", string(spans[0].ProcessID))
 	assert.Equal("t2_process_1", string(spans[1].ProcessID))
 
-	r = model.TracingResponse{
+	r = models.TracingResponse{
 		Data:               []jaegerModels.Trace{trace1, trace2},
 		TracingServiceName: "rating.default",
 	}
@@ -204,7 +203,7 @@ func TestTracesToSpanWithoutFilter(t *testing.T) {
 func TestTracesToSpanWithServiceFilter(t *testing.T) {
 	assert := assert.New(t)
 
-	r := model.TracingResponse{
+	r := models.TracingResponse{
 		Data:               []jaegerModels.Trace{trace1, trace2},
 		TracingServiceName: "reviews.default",
 	}
@@ -214,7 +213,7 @@ func TestTracesToSpanWithServiceFilter(t *testing.T) {
 	assert.Equal("t1_process_1", string(spans[0].ProcessID))
 	assert.Equal("t2_process_1", string(spans[1].ProcessID))
 
-	r = model.TracingResponse{
+	r = models.TracingResponse{
 		Data:               []jaegerModels.Trace{trace1, trace2},
 		TracingServiceName: "rating.default",
 	}
@@ -227,7 +226,7 @@ func TestTracesToSpanWithServiceFilter(t *testing.T) {
 func TestTracesToSpanWithWorkloadFilter(t *testing.T) {
 	assert := assert.New(t)
 
-	r := model.TracingResponse{
+	r := models.TracingResponse{
 		Data:               []jaegerModels.Trace{trace1, trace2},
 		TracingServiceName: "reviews.default",
 	}
@@ -237,7 +236,7 @@ func TestTracesToSpanWithWorkloadFilter(t *testing.T) {
 	assert.Equal("t1_process_1", string(spans[0].ProcessID))
 	assert.Equal("t2_process_1", string(spans[1].ProcessID))
 
-	r = model.TracingResponse{
+	r = models.TracingResponse{
 		Data:               []jaegerModels.Trace{trace1, trace2},
 		TracingServiceName: "rating.default",
 	}
@@ -251,7 +250,7 @@ func TestTracesToSpanWithWorkloadFilter(t *testing.T) {
 func TestTracesToSpanWaypointWithWorkloadFilter(t *testing.T) {
 	assert := assert.New(t)
 
-	r := model.TracingResponse{
+	r := models.TracingResponse{
 		Data:               []jaegerModels.Trace{waypointTrace},
 		TracingServiceName: "waypoint.default",
 	}
@@ -264,7 +263,7 @@ func TestTracesToSpanWaypointWithWorkloadFilter(t *testing.T) {
 func TestTracesToSpanWaypointWithAmbientTagWorkloadFilter(t *testing.T) {
 	assert := assert.New(t)
 
-	r := model.TracingResponse{
+	r := models.TracingResponse{
 		Data:               []jaegerModels.Trace{ambientTagTrace},
 		TracingServiceName: "waypoint.default",
 	}
@@ -307,7 +306,7 @@ func TestTracesToSpanWaypointWithAmbientTagsDoNotFallbackToAppPrefix(t *testing.
 		},
 	}
 
-	r := model.TracingResponse{
+	r := models.TracingResponse{
 		Data:               []jaegerModels.Trace{trace},
 		TracingServiceName: "waypoint.default",
 	}

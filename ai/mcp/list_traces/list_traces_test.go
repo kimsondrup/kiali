@@ -15,23 +15,22 @@ import (
 	"github.com/kiali/kiali/kubernetes/kubetest"
 	"github.com/kiali/kiali/models"
 	"github.com/kiali/kiali/tracing"
-	tracingModel "github.com/kiali/kiali/tracing/jaeger/model"
 	jaegerModels "github.com/kiali/kiali/tracing/jaeger/model/json"
 	"github.com/kiali/kiali/util"
 )
 
 type fakeTracingClient struct {
-	appTraces   *tracingModel.TracingResponse
+	appTraces   *models.TracingResponse
 	appErr      error
-	traceDetail *tracingModel.TracingSingleTrace
+	traceDetail *models.TracingSingleTrace
 	detailErr   error
 }
 
-func (f *fakeTracingClient) GetAppTraces(_ context.Context, _, _ string, _ models.TracingQuery) (*tracingModel.TracingResponse, error) {
+func (f *fakeTracingClient) GetAppTraces(_ context.Context, _, _ string, _ models.TracingQuery) (*models.TracingResponse, error) {
 	return f.appTraces, f.appErr
 }
 
-func (f *fakeTracingClient) GetTraceDetail(_ context.Context, _ string) (*tracingModel.TracingSingleTrace, error) {
+func (f *fakeTracingClient) GetTraceDetail(_ context.Context, _ string) (*models.TracingSingleTrace, error) {
 	return f.traceDetail, f.detailErr
 }
 
@@ -341,7 +340,7 @@ func TestExecute_EmptyTraces_Returns200WithZero(t *testing.T) {
 	conf.ExternalServices.Tracing.Enabled = true
 
 	fake := &fakeTracingClient{
-		appTraces: &tracingModel.TracingResponse{Data: nil},
+		appTraces: &models.TracingResponse{Data: nil},
 	}
 	svc := kubetest.FakeService("bookinfo", "ratings")
 	ki := newTestKialiInterface(t, conf, fake, &svc)
@@ -385,10 +384,10 @@ func TestExecute_WithTraces_Returns200WithSummary(t *testing.T) {
 	}
 
 	fake := &fakeTracingClient{
-		appTraces: &tracingModel.TracingResponse{
+		appTraces: &models.TracingResponse{
 			Data: []jaegerModels.Trace{sampleTrace},
 		},
-		traceDetail: &tracingModel.TracingSingleTrace{
+		traceDetail: &models.TracingSingleTrace{
 			Data: sampleTrace,
 		},
 	}

@@ -17,7 +17,7 @@ import (
 	"github.com/kiali/kiali/kubernetes"
 	"github.com/kiali/kiali/kubernetes/kubetest"
 	"github.com/kiali/kiali/log"
-	"github.com/kiali/kiali/tracing/jaeger/model"
+	"github.com/kiali/kiali/models"
 	"github.com/kiali/kiali/tracing/otel"
 )
 
@@ -130,7 +130,7 @@ func TestValidateSimpleTempoHTTP(t *testing.T) {
 
 	client := http.Client{}
 	zl := log.WithGroup(log.TracingLogName)
-	parsedUrl := model.ParsedUrl{
+	parsedUrl := models.ParsedUrl{
 		Scheme: "http",
 		Host:   "tempo-host",
 	}
@@ -178,7 +178,7 @@ func TestValidateTempoHTTP_WithGateway(t *testing.T) {
 
 	client := http.Client{}
 	zl := log.WithGroup(log.TracingLogName)
-	parsedUrl := model.ParsedUrl{
+	parsedUrl := models.ParsedUrl{
 		Scheme: "http",
 		Host:   "gateway-host",
 		Path:   "/api/traces/v1/tenantA", // path includes tenant
@@ -199,7 +199,7 @@ func TestValidateTempoHTTP_WithoutGateway(t *testing.T) {
 
 	client := http.Client{}
 	zl := log.WithGroup(log.TracingLogName)
-	parsedUrl := model.ParsedUrl{
+	parsedUrl := models.ParsedUrl{
 		Scheme: "http",
 		Host:   "tempo-host",
 		Path:   "",
@@ -220,7 +220,7 @@ func TestValidateTempoHTTP_GatewayMissingTenant(t *testing.T) {
 
 	client := http.Client{}
 	zl := log.WithGroup(log.TracingLogName)
-	parsedUrl := model.ParsedUrl{
+	parsedUrl := models.ParsedUrl{
 		Scheme: "http",
 		Host:   "gateway-host",
 		Path:   "/api/traces/v1", // No tenant segment
@@ -235,7 +235,7 @@ func TestValidateTempoHTTP_GatewayMissingTenant(t *testing.T) {
 }
 
 // helper to check logs
-func anyLogContains(logs []model.LogLine, substr string) bool {
+func anyLogContains(logs []models.LogLine, substr string) bool {
 	for _, l := range logs {
 		if strings.Contains(l.Result, substr) {
 			return true
@@ -262,7 +262,7 @@ func TestValidateJaegerHTTP_SuccessfulBothEndpoints(t *testing.T) {
 
 	client := http.Client{}
 	zl := log.WithGroup(log.TracingLogName)
-	parsedUrl := model.ParsedUrl{
+	parsedUrl := models.ParsedUrl{
 		Scheme: "http",
 		Host:   "jaeger-host",
 	}
@@ -292,7 +292,7 @@ func TestValidateJaegerHTTP_OnlyOneSuccess(t *testing.T) {
 
 	client := http.Client{}
 	zl := log.WithGroup(log.TracingLogName)
-	parsedUrl := model.ParsedUrl{
+	parsedUrl := models.ParsedUrl{
 		Scheme: "http",
 		Host:   "jaeger-host",
 	}
@@ -313,7 +313,7 @@ func TestValidateJaegerHTTP_NoSuccess(t *testing.T) {
 
 	client := http.Client{}
 	zl := log.WithGroup(log.TracingLogName)
-	parsedUrl := model.ParsedUrl{
+	parsedUrl := models.ParsedUrl{
 		Scheme: "http",
 		Host:   "jaeger-host",
 	}

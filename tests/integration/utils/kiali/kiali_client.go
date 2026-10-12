@@ -17,7 +17,6 @@ import (
 	mesh_config_common "github.com/kiali/kiali/mesh/config/common"
 	"github.com/kiali/kiali/models"
 	"github.com/kiali/kiali/status"
-	"github.com/kiali/kiali/tracing/jaeger/model"
 )
 
 type KialiClient struct {
@@ -290,9 +289,9 @@ func ServiceDetails(name, namespace string) (*ServiceDetailsJson, int, error) {
 	}
 }
 
-func Traces(objectType, name, namespace string) (*model.TracingResponse, int, error) {
+func Traces(objectType, name, namespace string) (*models.TracingResponse, int, error) {
 	url := fmt.Sprintf("%s/api/namespaces/%s/%s/%s/traces?startMicros=%d&tags=&limit=100", client.kialiURL, namespace, objectType, name, TimeSince())
-	traces := new(model.TracingResponse)
+	traces := new(models.TracingResponse)
 
 	code, err := getRequestAndUnmarshalIntoWithCustomTimeout(url, TIMEOUT_TRACING, traces)
 	if err == nil {
@@ -302,9 +301,9 @@ func Traces(objectType, name, namespace string) (*model.TracingResponse, int, er
 	}
 }
 
-func Spans(objectType, name, namespace string) ([]model.TracingSpan, int, error) {
+func Spans(objectType, name, namespace string) ([]models.TracingSpan, int, error) {
 	url := fmt.Sprintf("%s/api/namespaces/%s/%s/%s/spans?startMicros=%d&tags=&limit=100", client.kialiURL, namespace, objectType, name, TimeSince())
-	spans := new([]model.TracingSpan)
+	spans := new([]models.TracingSpan)
 
 	code, err := getRequestAndUnmarshalIntoWithCustomTimeout(url, TIMEOUT_TRACING, spans)
 	if err == nil {

@@ -12,7 +12,6 @@ import (
 
 	"github.com/kiali/kiali/config"
 	"github.com/kiali/kiali/models"
-	"github.com/kiali/kiali/tracing/jaeger/model"
 	jaegerModels "github.com/kiali/kiali/tracing/jaeger/model/json"
 	"github.com/kiali/kiali/tracing/otel/model/converter"
 	"github.com/kiali/kiali/tracing/tempo/querypb"
@@ -29,7 +28,7 @@ func NewgRPCClient(clientConn *grpc.ClientConn) (otelClient *TempoGRPCClient, er
 	return &streamClient, nil
 }
 
-func (jc TempoGRPCClient) FindTraces(ctx context.Context, serviceName string, q models.TracingQuery) (response *model.TracingResponse, err error) {
+func (jc TempoGRPCClient) FindTraces(ctx context.Context, serviceName string, q models.TracingQuery) (response *models.TracingResponse, err error) {
 
 	sr := &querypb.SearchRequest{}
 	sr.Start = uint32(q.Start.Unix())
@@ -92,7 +91,7 @@ func (jc TempoGRPCClient) FindTraces(ctx context.Context, serviceName string, q 
 	if err != nil {
 		return nil, err
 	}
-	r := model.TracingResponse{
+	r := models.TracingResponse{
 		Data:               traces,
 		TracingServiceName: serviceName,
 	}
@@ -101,7 +100,7 @@ func (jc TempoGRPCClient) FindTraces(ctx context.Context, serviceName string, q 
 }
 
 // GetTrace is not implemented by the streaming client
-func (jc TempoGRPCClient) GetTrace(ctx context.Context, strTraceID string) (*model.TracingSingleTrace, error) {
+func (jc TempoGRPCClient) GetTrace(ctx context.Context, strTraceID string) (*models.TracingSingleTrace, error) {
 	getLoggerFromContextGRPCTempo(ctx).Error().Msgf("[gRPC Tempo] GetTrace is not implemented by the Tempo streaming client")
 	return nil, nil
 

@@ -11,7 +11,6 @@ import (
 	"github.com/kiali/kiali/models"
 	"github.com/kiali/kiali/observability"
 	"github.com/kiali/kiali/tracing"
-	"github.com/kiali/kiali/tracing/jaeger/model"
 	jaegerModels "github.com/kiali/kiali/tracing/jaeger/model/json"
 	"github.com/kiali/kiali/util"
 )
@@ -70,17 +69,17 @@ func (in *TracingService) client() (tracing.ClientInterface, error) {
 	return in.tracing, nil
 }
 
-func (in *TracingService) getFilteredSpans(ctx context.Context, ns string, app models.TracingName, query models.TracingQuery, filter SpanFilter) ([]model.TracingSpan, error) {
+func (in *TracingService) getFilteredSpans(ctx context.Context, ns string, app models.TracingName, query models.TracingQuery, filter SpanFilter) ([]models.TracingSpan, error) {
 	r, err := in.GetAppTraces(ctx, ns, app.Lookup, app.Lookup, query)
 	if err != nil {
-		return []model.TracingSpan{}, err
+		return []models.TracingSpan{}, err
 	}
 	spans := tracesToSpans(ctx, app, r, filter, in.conf)
 
 	return spans, nil
 }
 
-func (in *TracingService) GetAppSpans(ctx context.Context, cluster, ns, app string, query models.TracingQuery) ([]model.TracingSpan, error) {
+func (in *TracingService) GetAppSpans(ctx context.Context, cluster, ns, app string, query models.TracingQuery) ([]models.TracingSpan, error) {
 	tracingName := in.app.GetAppTracingName(ctx, cluster, ns, app)
 	var waypointFilter SpanFilter
 	if tracingName.Lookup != app {
@@ -89,7 +88,7 @@ func (in *TracingService) GetAppSpans(ctx context.Context, cluster, ns, app stri
 	return in.getFilteredSpans(ctx, ns, tracingName, query, waypointFilter)
 }
 
-func (in *TracingService) GetServiceSpans(ctx context.Context, ns, service string, query models.TracingQuery) ([]model.TracingSpan, error) {
+func (in *TracingService) GetServiceSpans(ctx context.Context, ns, service string, query models.TracingQuery) ([]models.TracingSpan, error) {
 	var end observability.EndFunc
 	ctx, end = observability.StartSpan(ctx, "GetServiceSpans",
 		observability.Attribute("package", "business"),
@@ -160,7 +159,7 @@ func spanHasAmbientWorkloadTags(span *jaegerModels.Span) bool {
 	return (hasDestWorkload && hasDestNamespace) || (hasSourceWorkload && hasSourceNamespace)
 }
 
-func (in *TracingService) GetWorkloadSpans(ctx context.Context, ns, workload string, query models.TracingQuery) ([]model.TracingSpan, error) {
+func (in *TracingService) GetWorkloadSpans(ctx context.Context, ns, workload string, query models.TracingQuery) ([]models.TracingSpan, error) {
 	var end observability.EndFunc
 	ctx, end = observability.StartSpan(ctx, "GetWorkloadSpans",
 		observability.Attribute("package", "business"),
@@ -187,7 +186,7 @@ func wkdSpanFilter(ctx context.Context, ns string, tracingName models.TracingNam
 // GetAppTraces returns the traces for an app
 // TracingName is the name to be used to query the tracing backend (Using the waypoint name in Ambient)
 // App name is the name to filter the traces (When different)
-func (in *TracingService) GetAppTraces(ctx context.Context, ns, tracingName, app string, query models.TracingQuery) (*model.TracingResponse, error) {
+func (in *TracingService) GetAppTraces(ctx context.Context, ns, tracingName, app string, query models.TracingQuery) (*models.TracingResponse, error) {
 	client, err := in.client()
 	if err != nil {
 		return nil, err
@@ -220,7 +219,7 @@ func (in *TracingService) GetAppTraces(ctx context.Context, ns, tracingName, app
 // the number of desired traces.  It depends on the number of services backing the app. For example, if there are 2 services for the
 // app, if evenly distributed, a query limit of 20 may return only 10 traces.  The ratio is typically not as bad as it is with
 // GetWorkloadTraces.
-func (in *TracingService) GetServiceTraces(ctx context.Context, ns, service string, query models.TracingQuery) (*model.TracingResponse, error) {
+func (in *TracingService) GetServiceTraces(ctx context.Context, ns, service string, query models.TracingQuery) (*models.TracingResponse, error) {
 	var end observability.EndFunc
 	ctx, end = observability.StartSpan(ctx, "GetServiceTraces",
 		observability.Attribute("package", "business"),
@@ -266,7 +265,7 @@ func (in *TracingService) GetServiceTraces(ctx context.Context, ns, service stri
 // a subset of the traces may actually involve the requested workload.  Callers may need to upwardly adjust TracingQuery.Limit to get back
 // the number of desired traces.  It depends on the number of workloads backing the app. For example, if there are 5 workloads for the
 // app, if evenly distributed, a query limit of 25 may return only 5 traces.
-func (in *TracingService) GetWorkloadTraces(ctx context.Context, ns, workload string, query models.TracingQuery) (*model.TracingResponse, error) {
+func (in *TracingService) GetWorkloadTraces(ctx context.Context, ns, workload string, query models.TracingQuery) (*models.TracingResponse, error) {
 	var end observability.EndFunc
 	ctx, end = observability.StartSpan(ctx, "GetWorkloadTraces",
 		observability.Attribute("package", "business"),
@@ -295,7 +294,7 @@ func (in *TracingService) GetWorkloadTraces(ctx context.Context, ns, workload st
 	return r, err
 }
 
-func (in *TracingService) GetTraceDetail(ctx context.Context, traceID string) (trace *model.TracingSingleTrace, err error) {
+func (in *TracingService) GetTraceDetail(ctx context.Context, traceID string) (trace *models.TracingSingleTrace, err error) {
 	client, err := in.client()
 	if err != nil {
 		return nil, err
@@ -390,13 +389,13 @@ func spanMatchesWorkload(ctx context.Context, span *jaegerModels.Span, namespace
 	return false
 }
 
-func tracesToSpans(ctx context.Context, app models.TracingName, r *model.TracingResponse, filter SpanFilter, conf *config.Config) []model.TracingSpan {
-	spans := []model.TracingSpan{}
+func tracesToSpans(ctx context.Context, app models.TracingName, r *models.TracingResponse, filter SpanFilter, conf *config.Config) []models.TracingSpan {
+	spans := []models.TracingSpan{}
 	for _, trace := range r.Data {
 		if app.WaypointName != "" {
 			for _, span := range trace.Spans {
 				if filter == nil || filter(&span) {
-					spans = append(spans, model.TracingSpan{
+					spans = append(spans, models.TracingSpan{
 						Span:      span,
 						TraceSize: len(trace.Spans),
 					})
@@ -412,7 +411,7 @@ func tracesToSpans(ctx context.Context, app models.TracingName, r *model.Tracing
 			for _, span := range trace.Spans {
 				if span.Process.ServiceName == r.TracingServiceName {
 					if filter == nil || filter(&span) {
-						spans = append(spans, model.TracingSpan{
+						spans = append(spans, models.TracingSpan{
 							Span:      span,
 							TraceSize: len(trace.Spans),
 						})
@@ -432,7 +431,7 @@ func tracesToSpans(ctx context.Context, app models.TracingName, r *model.Tracing
 				if p, ok := processes[span.ProcessID]; ok {
 					span.Process = &p
 					if filter == nil || filter(&span) {
-						spans = append(spans, model.TracingSpan{
+						spans = append(spans, models.TracingSpan{
 							Span:      span,
 							TraceSize: len(trace.Spans),
 						})
@@ -445,12 +444,12 @@ func tracesToSpans(ctx context.Context, app models.TracingName, r *model.Tracing
 	return spans
 }
 
-func (in *TracingService) TracingDiagnose(ctx context.Context, token string) (trace *model.TracingDiagnose, err error) {
+func (in *TracingService) TracingDiagnose(ctx context.Context, token string) (trace *models.TracingDiagnose, err error) {
 	return tracing.DiagnoseTracingConfig(ctx, in.conf, token)
 }
 
-func (in *TracingService) ValidateConfiguration(ctx context.Context, conf *config.Config, tracingConfig *config.TracingConfig, token string) *model.ConfigurationValidation {
-	validation := model.ConfigurationValidation{}
+func (in *TracingService) ValidateConfiguration(ctx context.Context, conf *config.Config, tracingConfig *config.TracingConfig, token string) *models.ConfigurationValidation {
+	validation := models.ConfigurationValidation{}
 
 	// Merge config - restore obfuscated values from the actual config
 	// Note: CAFile is deprecated and is not processed

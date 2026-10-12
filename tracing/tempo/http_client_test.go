@@ -15,7 +15,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/kiali/kiali/models"
-	"github.com/kiali/kiali/tracing/jaeger/model"
 	"github.com/kiali/kiali/tracing/jaeger/model/json"
 )
 
@@ -289,7 +288,7 @@ func TestOddTraceDetailBody(t *testing.T) {
 	}
 }
 
-func getTraceFromFile(t *testing.T, file string, traceID string) (*model.TracingSingleTrace, error) {
+func getTraceFromFile(t *testing.T, file string, traceID string) (*models.TracingSingleTrace, error) {
 	t.Helper()
 
 	body, err := os.ReadFile(file)
@@ -297,7 +296,7 @@ func getTraceFromFile(t *testing.T, file string, traceID string) (*model.Tracing
 	return getTraceFromBody(t, string(body), traceID)
 }
 
-func getTraceFromBody(t *testing.T, body string, traceID string) (*model.TracingSingleTrace, error) {
+func getTraceFromBody(t *testing.T, body string, traceID string) (*models.TracingSingleTrace, error) {
 	t.Helper()
 
 	httpClient := http.Client{Transport: RoundTripFunc(func(req *http.Request) *http.Response {

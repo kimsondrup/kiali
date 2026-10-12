@@ -13,20 +13,19 @@ import (
 	"github.com/kiali/kiali/kubernetes/kubetest"
 	"github.com/kiali/kiali/models"
 	"github.com/kiali/kiali/tracing"
-	tracingModel "github.com/kiali/kiali/tracing/jaeger/model"
 	jaegerModels "github.com/kiali/kiali/tracing/jaeger/model/json"
 )
 
 type fakeTracingClient struct {
-	traceDetail *tracingModel.TracingSingleTrace
+	traceDetail *models.TracingSingleTrace
 	detailErr   error
 }
 
-func (f *fakeTracingClient) GetAppTraces(_ context.Context, _, _ string, _ models.TracingQuery) (*tracingModel.TracingResponse, error) {
+func (f *fakeTracingClient) GetAppTraces(_ context.Context, _, _ string, _ models.TracingQuery) (*models.TracingResponse, error) {
 	return nil, nil
 }
 
-func (f *fakeTracingClient) GetTraceDetail(_ context.Context, _ string) (*tracingModel.TracingSingleTrace, error) {
+func (f *fakeTracingClient) GetTraceDetail(_ context.Context, _ string) (*models.TracingSingleTrace, error) {
 	return f.traceDetail, f.detailErr
 }
 
@@ -394,9 +393,9 @@ func TestExecute_EmptySpansWithErrors_Returns404(t *testing.T) {
 	conf.ExternalServices.Tracing.Enabled = true
 
 	fake := &fakeTracingClient{
-		traceDetail: &tracingModel.TracingSingleTrace{
+		traceDetail: &models.TracingSingleTrace{
 			Data:   jaegerModels.Trace{Spans: []jaegerModels.Span{}},
-			Errors: []tracingModel.StructuredError{{Msg: "partial failure"}},
+			Errors: []models.StructuredError{{Msg: "partial failure"}},
 		},
 	}
 	ki := newTestKialiInterface(t, conf, fake)
@@ -413,7 +412,7 @@ func TestExecute_ValidTrace_Returns200WithHierarchy(t *testing.T) {
 	conf.ExternalServices.Tracing.Enabled = true
 
 	fake := &fakeTracingClient{
-		traceDetail: &tracingModel.TracingSingleTrace{
+		traceDetail: &models.TracingSingleTrace{
 			Data: jaegerModels.Trace{
 				Processes: map[jaegerModels.ProcessID]jaegerModels.Process{
 					"p1": {ServiceName: "productpage"},

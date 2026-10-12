@@ -6,7 +6,6 @@ import (
 	"github.com/kiali/kiali/kubernetes"
 	"github.com/kiali/kiali/models"
 	"github.com/kiali/kiali/status"
-	"github.com/kiali/kiali/tracing/jaeger/model"
 	jaegerModels "github.com/kiali/kiali/tracing/jaeger/model/json"
 )
 
@@ -698,7 +697,7 @@ type ErrorTracesResponse struct {
 // swagger:response spansResponse
 type SpansResponse struct {
 	// in:body
-	Body []model.TracingSpan
+	Body []models.TracingSpan
 }
 
 // Listing all the information related to a workload
@@ -878,14 +877,14 @@ type ClusterTlsResponse struct {
 // swagger:response configurationValidation
 type ConfigurationValidationResponse struct {
 	// in: body
-	Body model.ConfigurationValidation
+	Body models.ConfigurationValidation
 }
 
 // Response of the tracing diagnose query
 // swagger:response tracingDiagnose
 type TracingDiagnoseResponse struct {
 	// in: body
-	Body model.TracingDiagnose
+	Body models.TracingDiagnose
 }
 
 // Response of the perses info query

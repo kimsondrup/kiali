@@ -29,9 +29,9 @@ func NewGRPCJaegerClient(cc model.QueryServiceClient) (jaegerClient *JaegerGRPCC
 }
 
 // FindTraces
-func (jc JaegerGRPCClient) FindTraces(ctx context.Context, serviceName string, q models.TracingQuery) (response *model.TracingResponse, err error) {
+func (jc JaegerGRPCClient) FindTraces(ctx context.Context, serviceName string, q models.TracingQuery) (response *models.TracingResponse, err error) {
 	jaegerServiceName := serviceName
-	r := model.TracingResponse{
+	r := models.TracingResponse{
 		Data:               []jsonModel.Trace{},
 		TracingServiceName: jaegerServiceName,
 	}
@@ -65,7 +65,7 @@ func (jc JaegerGRPCClient) FindTraces(ctx context.Context, serviceName string, q
 	return &r, nil
 }
 
-func (jc JaegerGRPCClient) GetTrace(ctx context.Context, strTraceID string) (*model.TracingSingleTrace, error) {
+func (jc JaegerGRPCClient) GetTrace(ctx context.Context, strTraceID string) (*models.TracingSingleTrace, error) {
 	traceID, err := model.TraceIDFromString(strTraceID)
 	if err != nil {
 		return nil, fmt.Errorf("GetTraceDetail, invalid trace ID: %v", err)
@@ -90,7 +90,7 @@ func (jc JaegerGRPCClient) GetTrace(ctx context.Context, strTraceID string) (*mo
 	}
 	if trace, ok := tracesMap[traceID]; ok {
 		converted := jsonConv.FromDomain(trace)
-		return &model.TracingSingleTrace{Data: *converted}, nil
+		return &models.TracingSingleTrace{Data: *converted}, nil
 	}
 	// Not found
 	return nil, nil

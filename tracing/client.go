@@ -31,8 +31,8 @@ const (
 
 // ClientInterface for mocks (only mocked function are necessary here)
 type ClientInterface interface {
-	GetAppTraces(ctx context.Context, ns, app string, query models.TracingQuery) (traces *model.TracingResponse, err error)
-	GetTraceDetail(ctx context.Context, traceId string) (*model.TracingSingleTrace, error)
+	GetAppTraces(ctx context.Context, ns, app string, query models.TracingQuery) (traces *models.TracingResponse, err error)
+	GetTraceDetail(ctx context.Context, traceId string) (*models.TracingSingleTrace, error)
 	GetErrorTraces(ctx context.Context, ns, app string, duration time.Duration) (errorTraces int, err error)
 	GetServiceStatus(ctx context.Context) (available bool, err error)
 	GetServices(ctx context.Context) ([]string, error)
@@ -40,16 +40,16 @@ type ClientInterface interface {
 
 // HTTPClientInterface for Mocks, also for Tempo or Jaeger
 type HTTPClientInterface interface {
-	GetAppTracesHTTP(ctx context.Context, client http.Client, baseURL *url.URL, serviceName string, q models.TracingQuery) (response *model.TracingResponse, err error)
-	GetTraceDetailHTTP(ctx context.Context, client http.Client, endpoint *url.URL, traceID string) (*model.TracingSingleTrace, error)
+	GetAppTracesHTTP(ctx context.Context, client http.Client, baseURL *url.URL, serviceName string, q models.TracingQuery) (response *models.TracingResponse, err error)
+	GetTraceDetailHTTP(ctx context.Context, client http.Client, endpoint *url.URL, traceID string) (*models.TracingSingleTrace, error)
 	GetServiceStatusHTTP(ctx context.Context, client http.Client, baseURL *url.URL) (bool, error)
 	GetServices(ctx context.Context, client http.Client, baseURL *url.URL) ([]string, error)
 }
 
 // GRPCClientInterface for Mocks, also for Tempo or Jaeger
 type GRPCClientInterface interface {
-	FindTraces(ctx context.Context, app string, q models.TracingQuery) (response *model.TracingResponse, err error)
-	GetTrace(ctx context.Context, traceID string) (*model.TracingSingleTrace, error)
+	FindTraces(ctx context.Context, app string, q models.TracingQuery) (response *models.TracingResponse, err error)
+	GetTrace(ctx context.Context, traceID string) (*models.TracingSingleTrace, error)
 	GetServices(ctx context.Context) (bool, error)
 	GetServicesList(ctx context.Context) ([]string, error)
 }
@@ -225,7 +225,7 @@ func newClient(ctx context.Context, conf *config.Config, token string) (*Client,
 }
 
 // GetAppTraces fetches traces of an app
-func (in *Client) GetAppTraces(ctx context.Context, namespace, app string, q models.TracingQuery) (*model.TracingResponse, error) {
+func (in *Client) GetAppTraces(ctx context.Context, namespace, app string, q models.TracingQuery) (*models.TracingResponse, error) {
 	ctx = in.prepareContextForClient(ctx)
 
 	serviceName := app
@@ -241,7 +241,7 @@ func (in *Client) GetAppTraces(ctx context.Context, namespace, app string, q mod
 }
 
 // GetTraceDetail fetches a specific trace from its ID
-func (in *Client) GetTraceDetail(ctx context.Context, strTraceID string) (*model.TracingSingleTrace, error) {
+func (in *Client) GetTraceDetail(ctx context.Context, strTraceID string) (*models.TracingSingleTrace, error) {
 	ctx = in.prepareContextForClient(ctx)
 
 	cfg := config.Get()
