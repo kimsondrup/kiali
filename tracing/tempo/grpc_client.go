@@ -179,9 +179,13 @@ func processStream(ctx context.Context, stream tempopb.StreamingQuerier_SearchCl
 }
 
 // processServices
+// A search result names the service of the trace's root span, and many traces share one root
+// service. The stream is cumulative too, as in processStream, so a service is listed the first
+// time it is seen and skipped afterwards.
 func processServices(ctx context.Context, stream tempopb.StreamingQuerier_SearchClient) ([]string, error) {
 	zl := getLoggerFromContextGRPCTempo(ctx)
 	services := []string{}
+	listed := map[string]bool{}
 
 	for received, err := stream.Recv(); err != io.EOF; received, err = stream.Recv() {
 		if err != nil {
@@ -193,7 +197,12 @@ func processServices(ctx context.Context, stream tempopb.StreamingQuerier_Search
 			return nil, fmt.Errorf("[gRPC Tempo] Tracing gRPC client, stream error: %v", err)
 		}
 		for _, trace := range received.Traces {
-			services = append(services, trace.RootTraceName)
+			service := trace.GetRootServiceName()
+			if service == "" || listed[service] {
+				continue
+			}
+			listed[service] = true
+			services = append(services, service)
 		}
 	}
 	return services, nil

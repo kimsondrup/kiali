@@ -167,3 +167,24 @@ func TestGetServicesReceivesBeforeReportingHealthy(t *testing.T) {
 		})
 	}
 }
+
+// TestProcessServicesListsDistinctServiceNames covers the list of services, which is read off a
+// search stream of the same cumulative shape: a result names the service of the trace's root span,
+// many traces share one root service, and every message repeats the traces of the messages before
+// it. What comes out is each service once.
+func TestProcessServicesListsDistinctServiceNames(t *testing.T) {
+	reviews := searchedTrace("aaaa", 1)
+	moreReviews := searchedTrace("bbbb", 1)
+	details := searchedTrace("cccc", 1)
+	details.RootServiceName = "details.bookinfo"
+	details.RootTraceName = "details.bookinfo.svc.cluster.local:9080/*"
+
+	stream := &fakeSearchStream{responses: []*tempopb.SearchResponse{
+		searchResponse(reviews),
+		searchResponse(reviews, moreReviews, details),
+	}}
+
+	services, err := processServices(context.Background(), stream)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"reviews.bookinfo", "details.bookinfo"}, services)
+}
