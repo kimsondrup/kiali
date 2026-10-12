@@ -74,6 +74,9 @@ func TestGetTraces(t *testing.T) {
 	assert.NotNil(t, response.Data)
 	assert.Equal(t, response.Data[0].TraceID, json.TraceID("100cb753c787ed5657c8d88dafc176ed"))
 	assert.Equal(t, len(response.Data[0].Spans), 3)
+	// The capture has Tempo reporting six matched spans and sending three of them, so the matched
+	// count has to come off the wire rather than from the length of the span list.
+	assert.Equal(t, 6, response.Data[0].Matched)
 	assert.Equal(t, response.Data[0].Spans[0].OperationName, "productpage.bookinfo.svc.cluster.local:9080/productpage")
 	assert.Equal(t, response.Data[0].Spans[0].Tags[0].Key, "node_id")
 	assert.Equal(t, response.Data[0].Spans[0].Tags[0].Value, "sidecar~10.244.0.20~reviews-v1-667b5cc65d-4m24g.bookinfo~bookinfo.svc.cluster.local")
@@ -179,6 +182,29 @@ func TestUnreadableSearchBody(t *testing.T) {
 			assert.Empty(t, response.Data)
 		})
 	}
+}
+
+// TestNewerTempoFieldIsIgnored covers a field a Tempo newer than the generated stubs sends. A
+// receiver that failed on one would blank the traces list on an upgrade of the backend alone.
+func TestNewerTempoFieldIsIgnored(t *testing.T) {
+	body := `{"traces":[{"traceID":"aa00000000000000000000000000000a","somethingLater":{"x":1},"spanSet":{"matched":1,"spans":[` +
+		`{"spanID":"0101010101010101","startTimeUnixNano":"1701779876570888000","durationNanos":"1000","somethingLater":7}]}}]}`
+
+	httpClient := http.Client{Transport: RoundTripFunc(func(req *http.Request) *http.Response {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(body)),
+		}
+	})}
+
+	tempoClient, err := NewOtelClient(context.TODO())
+	require.NoError(t, err)
+
+	response, err := tempoClient.GetAppTracesHTTP(context.Background(), httpClient, getBaseUrl(), serviceName, models.TracingQuery{})
+	require.NoError(t, err)
+	require.Len(t, response.Data, 1)
+	require.Len(t, response.Data[0].Spans, 1)
+	assert.Equal(t, json.SpanID("0101010101010101"), response.Data[0].Spans[0].SpanID)
 }
 
 // TestEmptySearch verifies that a valid search answer with no traces reports no traces.

@@ -8,7 +8,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
 
 	"github.com/kiali/kiali/log"
@@ -74,6 +76,16 @@ func clientOver(t *testing.T, d func(context.Context, string) (net.Conn, error))
 	return client
 }
 
+// searchStream opens a real gRPC stream against querier, so the client code under test reads the
+// messages the way it reads Tempo's.
+func searchStream(t *testing.T, querier tempopb.StreamingQuerierServer) tempopb.StreamingQuerier_SearchClient {
+	t.Helper()
+
+	stream, err := clientOver(t, dialer(querier)).StreamingClient.Search(context.Background(), &tempopb.SearchRequest{})
+	require.NoError(t, err)
+	return stream
+}
+
 // searchResponse builds one stream message out of the traces it is given.
 func searchResponse(traces ...*tempopb.TraceSearchMetadata) *tempopb.SearchResponse {
 	return &tempopb.SearchResponse{Traces: traces}
@@ -137,4 +149,49 @@ func TestGetServicesJudgesTheBackendOnWhatItReceives(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestProcessStreamAccumulatesDisjointMessages covers the framing Tempo's StreamingQuerier.Search
+// uses. A response too large for one message is split by partitioning the trace list, so every
+// message carries traces the others do not and all of them belong in the result.
+func TestProcessStreamAccumulatesDisjointMessages(t *testing.T) {
+	stream := searchStream(t, &scriptedQuerier{messages: []*tempopb.SearchResponse{
+		searchResponse(searchedTrace("02e299711ce47710289dc6640727404f", 1)),
+		searchResponse(searchedTrace("1c6e4bf1d1c0ac3d91f9b2e5a0d7c418", 1)),
+		searchResponse(searchedTrace("3f7a90b4c5d6e7f801928374655aa0bb", 1)),
+	}})
+
+	traces, err := processStream(context.Background(), stream, "reviews.default")
+	require.NoError(t, err)
+	require.Len(t, traces, 3)
+	assert.Equal(t, "02e299711ce47710289dc6640727404f", string(traces[0].TraceID))
+	assert.Equal(t, "1c6e4bf1d1c0ac3d91f9b2e5a0d7c418", string(traces[1].TraceID))
+	assert.Equal(t, "3f7a90b4c5d6e7f801928374655aa0bb", string(traces[2].TraceID))
+}
+
+// TestProcessStreamEndsOnEOF covers a search that matched nothing: the server ends the stream
+// without sending a message, which is not a failure and must not read as one.
+func TestProcessStreamEndsOnEOF(t *testing.T) {
+	stream := searchStream(t, &scriptedQuerier{})
+
+	traces, err := processStream(context.Background(), stream, "reviews.default")
+	require.NoError(t, err)
+	// Not nil even when empty: a nil slice serialises as JSON null.
+	assert.NotNil(t, traces)
+	assert.Empty(t, traces)
+}
+
+// TestProcessStreamReportsAStreamError covers a stream that fails partway. The traces already
+// received are the beginning of an answer rather than an answer, so the error is what reaches the
+// caller.
+func TestProcessStreamReportsAStreamError(t *testing.T) {
+	stream := searchStream(t, &scriptedQuerier{
+		messages: []*tempopb.SearchResponse{searchResponse(searchedTrace("02e299711ce47710289dc6640727404f", 1))},
+		failWith: status.Error(codes.Internal, "block scheduler unavailable"),
+	})
+
+	traces, err := processStream(context.Background(), stream, "reviews.default")
+	require.Error(t, err)
+	assert.Nil(t, traces)
+	assert.Contains(t, err.Error(), "block scheduler unavailable")
 }
