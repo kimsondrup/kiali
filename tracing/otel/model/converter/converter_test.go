@@ -205,6 +205,33 @@ func TestConvertTraceMetadataOperationName(t *testing.T) {
 	}
 }
 
+// TestConvertTraceMetadataMatched covers the count of matched spans a trace reports. Tempo counts
+// the spans its search matched and sends that count with the span set, which is not the same as the
+// number of spans in the result: the gRPC search asks for at most ten spans per span set, so a
+// trace with more matches than that arrives with ten spans and a larger count.
+func TestConvertTraceMetadataMatched(t *testing.T) {
+	spanSet := &tempopb.SpanSet{Matched: 25}
+	for i := 0; i < 10; i++ {
+		spanSet.Spans = append(spanSet.Spans, &tempopb.Span{
+			SpanID:            "2e6ca056f5fc6fd" + strconv.Itoa(i),
+			Name:              "reviews.bookinfo.svc.cluster.local:9080/*",
+			StartTimeUnixNano: 1693389472310270000,
+			DurationNanos:     646000,
+		})
+	}
+
+	trace := tempopb.TraceSearchMetadata{
+		TraceID:       getId(),
+		RootTraceName: "reviews.bookinfo.svc.cluster.local:9080/*",
+		SpanSet:       spanSet,
+	}
+
+	converted, err := ConvertTraceMetadata(trace, "reviews.bookinfo")
+	require.NoError(t, err)
+	require.Len(t, converted.Spans, 10)
+	assert.Equal(t, 25, converted.Matched)
+}
+
 // TestConvertSpanSetNoStartTime covers a span that Tempo's search API answers with and that carries
 // no start time. Reported with a start time of zero it is dated to the Unix epoch; ConvertSpans
 // drops such a span on the trace detail path, and this is the same rule on the path that feeds the

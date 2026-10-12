@@ -92,7 +92,9 @@ func ConvertTraceMetadata(trace tempopb.TraceSearchMetadata, serviceName string)
 		spanSet := convertOtelSpan(span, serviceName, trace.TraceID, trace.RootTraceName)
 		jaegerTrace.Spans = append(jaegerTrace.Spans, spanSet)
 	}
-	jaegerTrace.Matched = len(jaegerTrace.Spans)
+	// Tempo counts the spans its search matched, which is more than the spans it sends back when
+	// the search caps the spans per span set.
+	jaegerTrace.Matched = int(trace.GetSpanSet().GetMatched())
 	return &jaegerTrace, nil
 }
 
