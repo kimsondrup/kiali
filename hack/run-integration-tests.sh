@@ -43,6 +43,7 @@ STERN="false"
 TEMPO="false"
 TEST_SUITE="${BACKEND}"
 TESTS_ONLY="false"
+USE_GRPC="false"
 WAYPOINT="false"
 WITH_VIDEO="false"
 KIALI_PID=""
@@ -208,6 +209,14 @@ while [[ $# -gt 0 ]]; do
       fi
       shift;shift
       ;;
+    -ug|--use-grpc)
+      USE_GRPC="${2}"
+      if [ "${USE_GRPC}" != "true" ] && [ "${USE_GRPC}" != "false" ]; then
+        echo "--use-grpc option must be one of 'true' or 'false'"
+        exit 1
+      fi
+      shift;shift
+      ;;
     -w|--waypoint)
       WAYPOINT="${2}"
       if [ "${WAYPOINT}" != "true" ] && [ "${WAYPOINT}" != "false" ]; then
@@ -292,6 +301,10 @@ Valid command line arguments:
   -ts|--test-suite <${BACKEND}|${BACKEND_EXTERNAL_CONTROLPLANE}|${FRONTEND}|${FRONTEND_AMBIENT}|${FRONTEND_CORE_1}|${FRONTEND_CORE_2}|${FRONTEND_CORE_CACHING}|${FRONTEND_CORE_OPTIONAL}|${FRONTEND_PRIMARY_REMOTE}|${FRONTEND_MULTI_PRIMARY}|${FRONTEND_MULTI_MESH}|${FRONTEND_MULTIPLE_CONTROLPLANES}|${FRONTEND_EXTERNAL_KIALI}|${FRONTEND_TEMPO}|${AI_CHATBOT}|${LOCAL}|${OFFLINE}>
     Which test suite to run.
     Default: ${BACKEND}
+  -ug|--use-grpc <true|false>
+    If true, Kiali queries the tracing backend over gRPC instead of HTTP.
+    Just for the frontend-tempo suite.
+    Default: false
   -w|--waypoint <true|false>
     If true, configure waypoint for bookinfo namespace in ambient multi-primary setup.
     Default: false
@@ -346,6 +359,7 @@ TEST_SUITE=$TEST_SUITE
 WAYPOINT=$WAYPOINT
 WITH_VIDEO=$WITH_VIDEO
 TEMPO=$TEMPO
+USE_GRPC=$USE_GRPC
 === SETTINGS ===
 EOM
 
@@ -1043,7 +1057,7 @@ elif [ "${TEST_SUITE}" == "${FRONTEND_TEMPO}" ]; then
   ensureCypressReady
 
   if [ "${TESTS_ONLY}" == "false" ]; then
-    "${SCRIPT_DIR}"/setup-kind-in-ci.sh --tempo true --sail true --auth-strategy token ${ISTIO_VERSION_ARG} ${HELM_CHARTS_DIR_ARG}
+    "${SCRIPT_DIR}"/setup-kind-in-ci.sh --tempo true --use-grpc ${USE_GRPC} --sail true --auth-strategy token ${ISTIO_VERSION_ARG} ${HELM_CHARTS_DIR_ARG}
 
     # Install demo apps
     "${SCRIPT_DIR}"/istio/install-testing-demos.sh -c "kubectl" --use-gateway-api true --bookinfo-only ${BOOKINFO_ONLY}

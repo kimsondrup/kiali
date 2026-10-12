@@ -24,9 +24,15 @@ env:
 
 jobs:
   integration_tests_frontend:
-    name: Cypress tests (tempo)
+    name: Cypress tests (tempo, grpc=${{ matrix.use_grpc }})
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    strategy:
+      # Cover both tracing transports; one failing must not hide the other's result
+      fail-fast: false
+      matrix:
+        # Quoted: the value is passed through to a shell argument
+        use_grpc: ["false", "true"]
     env:
       # Copied from: https://github.com/bahmutov/cypress-gh-action-split-install/blob/ca3916d4e7240ebdc337825d2d78eb354855464b/.github/workflows/tests.yml#L7-L11
       # prevents extra Cypress installation progress messages
@@ -45,7 +51,7 @@ jobs:
         docker system prune -af --volumes
 
     - name: Start resource sampler
-      run: nohup nice -n 19 bash hack/ci-resource-sampler.sh start --csv /tmp/ci-telemetry-frontend-tempo.csv > /tmp/sampler.out 2>&1 &
+      run: nohup nice -n 19 bash hack/ci-resource-sampler.sh start --csv /tmp/ci-telemetry-frontend-tempo-grpc-${{ matrix.use_grpc }}.csv > /tmp/sampler.out 2>&1 &
       continue-on-error: true
 
     - name: Install Helm
@@ -82,11 +88,11 @@ jobs:
       run: yarn install --immutable
 
     - name: Run frontend integration tests
-      run: hack/run-integration-tests.sh --test-suite frontend-tempo $(if [ -n "${{ inputs.istio_version }}" ]; then echo "--istio-version ${{ inputs.istio_version }}"; fi) $(if [ -n "${{ inputs.sail_operator_git_ref }}" ]; then echo "--sail-operator-git-ref ${{ inputs.sail_operator_git_ref }}"; fi)
+      run: hack/run-integration-tests.sh --test-suite frontend-tempo --use-grpc ${{ matrix.use_grpc }} $(if [ -n "${{ inputs.istio_version }}" ]; then echo "--istio-version ${{ inputs.istio_version }}"; fi) $(if [ -n "${{ inputs.sail_operator_git_ref }}" ]; then echo "--sail-operator-git-ref ${{ inputs.sail_operator_git_ref }}"; fi)
 
     - name: Stop resource sampler
       if: always()
-      run: bash hack/ci-resource-sampler.sh stop --csv /tmp/ci-telemetry-frontend-tempo.csv || true
+      run: bash hack/ci-resource-sampler.sh stop --csv /tmp/ci-telemetry-frontend-tempo-grpc-${{ matrix.use_grpc }}.csv || true
       continue-on-error: true
 
     - name: Upload resource telemetry
@@ -94,8 +100,8 @@ jobs:
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       continue-on-error: true
       with:
-        name: resource-telemetry-frontend-tempo
-        path: /tmp/ci-telemetry-frontend-tempo.csv
+        name: resource-telemetry-frontend-tempo-grpc-${{ matrix.use_grpc }}
+        path: /tmp/ci-telemetry-frontend-tempo-grpc-${{ matrix.use_grpc }}.csv
         retention-days: 14
         if-no-files-found: ignore
 
@@ -109,12 +115,12 @@ jobs:
       if: failure()
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
-        name: debug-info-frontend-tempo
+        name: debug-info-frontend-tempo-grpc-${{ matrix.use_grpc }}
         path: debug-output
 
     - name: Upload cypress screenshots when tests fail
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       if: failure()
       with:
-        name: cypress-screenshots-frontend-tempo
+        name: cypress-screenshots-frontend-tempo-grpc-${{ matrix.use_grpc }}
         path: frontend/cypress/screenshots

@@ -122,6 +122,10 @@ Options:
 -te|--tempo
     If Tempo will be installed as the tracing platform
     instead of Jaeger
+-ug|--use-grpc <true|false>
+    Whether Kiali queries the tracing backend over gRPC
+    instead of HTTP.
+    Default: false
 HELP
 }
 
@@ -170,6 +174,7 @@ while [[ $# -gt 0 ]]; do
       shift;shift
       ;;
     -te|--tempo)                   TEMPO="$2";               shift;shift; ;;
+    -ug|--use-grpc)                USE_GRPC="$2";            shift;shift; ;;
     -w|--waypoint)                 WAYPOINT="$2";            shift;shift; ;;
     *) echo "Unknown argument: [$key]. Aborting."; helpmsg; exit 1 ;;
   esac
@@ -208,6 +213,7 @@ ENABLE_CACHE="${ENABLE_CACHE:-false}"
 KIALI_ONLY="${KIALI_ONLY:-false}"
 KIALI_VERSION="${KIALI_VERSION:-dev}"
 TEMPO="${TEMPO:-false}"
+USE_GRPC="${USE_GRPC:-false}"
 
 if [ "${KIALI_VERSION}" == "dev" ]; then
   KIALI_IMAGE_NAME="localhost/kiali/kiali"
@@ -375,6 +381,7 @@ SAIL=$SAIL
 TARGET_BRANCH=$TARGET_BRANCH
 BUILD_BRANCH=$BUILD_BRANCH
 TEMPO=$TEMPO
+USE_GRPC=$USE_GRPC
 === SETTINGS ===
 EOM
 
@@ -692,7 +699,7 @@ setup_kind_tempo() {
     --set external_services.tracing.provider="tempo" \
     --set external_services.tracing.external_url="http://tempo-cr-query-frontend.tempo:3200" \
     --set external_services.tracing.internal_url="http://tempo-cr-query-frontend.tempo:3200" \
-    --set external_services.tracing.use_grpc="false" \
+    --set external_services.tracing.use_grpc="${USE_GRPC}" \
     "${tracing_use_waypoint_args[@]}" \
     --set external_services.istio.validation_reconcile_interval="5s" \
     --set health_config.rate[0].kind="service" \
