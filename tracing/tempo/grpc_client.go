@@ -145,8 +145,10 @@ func processStream(ctx context.Context, stream tempopb.StreamingQuerier_SearchCl
 	for received, err := stream.Recv(); err != io.EOF; received, err = stream.Recv() {
 		if err != nil {
 			if status.Code(err) == codes.DeadlineExceeded {
-				zl.Trace().Msg("[gRPC Tempo] client timeout")
-				break
+				// What arrived before the deadline is a truncated result set and not the answer to
+				// the search, so it is reported alongside the timeout rather than in place of it.
+				zl.Error().Msgf("[gRPC Tempo] client timeout after %d trace(s): %v", len(traces), err)
+				return traces, fmt.Errorf("[gRPC Tempo] Tracing gRPC client, search timed out: %v", err)
 			}
 			zl.Error().Msgf("[gRPC Tempo] stream error: %v", err)
 			return nil, fmt.Errorf("[gRPC Tempo] Tracing gRPC client, stream error: %v", err)
@@ -174,8 +176,8 @@ func processServices(ctx context.Context, stream tempopb.StreamingQuerier_Search
 	for received, err := stream.Recv(); err != io.EOF; received, err = stream.Recv() {
 		if err != nil {
 			if status.Code(err) == codes.DeadlineExceeded {
-				zl.Trace().Msg("[gRPC Tempo] client timeout")
-				break
+				zl.Error().Msgf("[gRPC Tempo] client timeout after %d service(s): %v", len(services), err)
+				return services, fmt.Errorf("[gRPC Tempo] Tracing gRPC client, search timed out: %v", err)
 			}
 			zl.Error().Msgf("[gRPC Tempo] stream error: %v", err)
 			return nil, fmt.Errorf("[gRPC Tempo] Tracing gRPC client, stream error: %v", err)

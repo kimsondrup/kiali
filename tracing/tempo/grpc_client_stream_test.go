@@ -8,6 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/kiali/kiali/tracing/tempo/tempopb"
 )
@@ -83,4 +85,33 @@ func TestProcessStreamCollapsesSnapshots(t *testing.T) {
 	assert.Len(t, traces[0].Spans, 3, "the last snapshot of trace aaaa")
 	assert.Len(t, traces[1].Spans, 2, "the last snapshot of trace bbbb")
 	assert.Len(t, traces[2].Spans, 1, "the last snapshot of trace cccc")
+}
+
+// TestProcessStreamReportsATimeout covers a search that runs out of time part way through its
+// stream. What arrived before the deadline is a truncated result set and not the answer to the
+// query, so returning it on its own leaves the caller unable to tell the two apart.
+func TestProcessStreamReportsATimeout(t *testing.T) {
+	stream := &fakeSearchStream{
+		responses: []*tempopb.SearchResponse{searchResponse(searchedTrace("aaaa", 1))},
+		err:       status.Error(codes.DeadlineExceeded, "context deadline exceeded"),
+		errAt:     1,
+	}
+
+	_, err := processStream(context.Background(), stream, "reviews.bookinfo")
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "timed out")
+}
+
+// TestProcessServicesReportsATimeout covers the same deadline on the stream that the service list
+// reads.
+func TestProcessServicesReportsATimeout(t *testing.T) {
+	stream := &fakeSearchStream{
+		responses: []*tempopb.SearchResponse{searchResponse(searchedTrace("aaaa", 1))},
+		err:       status.Error(codes.DeadlineExceeded, "context deadline exceeded"),
+		errAt:     1,
+	}
+
+	_, err := processServices(context.Background(), stream)
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "timed out")
 }
