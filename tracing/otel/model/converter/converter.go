@@ -108,6 +108,11 @@ func convertOtelSpan(span *tempopb.Span, serviceName, traceID, rootTrace string)
 		duration = 0
 	}
 
+	operationName := rootTrace
+	if span.Name != "" {
+		operationName = span.Name
+	}
+
 	modelSpan := jaegerModels.Span{
 		SpanID:    jaegerModels.SpanID(span.SpanID),
 		TraceID:   jaegerModels.TraceID(traceID),
@@ -118,7 +123,7 @@ func convertOtelSpan(span *tempopb.Span, serviceName, traceID, rootTrace string)
 		References:    []jaegerModels.Reference{}, // convertReferences(traceID, rootTrace),
 		Tags:          convertModelAttributes(span.Attributes),
 		Logs:          []jaegerModels.Log{},
-		OperationName: rootTrace,
+		OperationName: operationName,
 		ProcessID:     "",
 		Process:       &jaegerModels.Process{Tags: []jaegerModels.KeyValue{}, ServiceName: serviceName},
 		Warnings:      []string{},
