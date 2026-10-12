@@ -474,7 +474,7 @@ func decodeAPIV3(t *testing.T, path string) *tracepb.TracesData {
 
 	body, err := os.ReadFile(path)
 	require.NoError(t, err)
-	traces, err := otlp.Decode(body, otlp.Options{RootKey: otlp.RootKeyResult, IDEncoding: otlp.Hex})
+	traces, err := otlp.Decode(body, otlp.Options{IDEncoding: otlp.Hex, RootKey: otlp.RootKeyResult})
 	require.NoError(t, err)
 	return traces
 }
@@ -484,7 +484,7 @@ func decode(t *testing.T, path string) *tracepb.TracesData {
 
 	body, err := os.ReadFile(path)
 	require.NoError(t, err)
-	traces, err := otlp.Decode(body, otlp.Options{RootKey: otlp.RootKeyBatches, IDEncoding: otlp.Base64})
+	traces, err := otlp.Decode(body, otlp.Options{IDEncoding: otlp.Base64, RootKey: otlp.RootKeyBatches})
 	require.NoError(t, err)
 	return traces
 }

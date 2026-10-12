@@ -20,7 +20,7 @@ func keyValueFromAttribute(attribute *commonpb.KeyValue) (jsonModel.KeyValue, bo
 	plain := plainValue(attribute.GetValue())
 	unread := plain == nil && attribute.GetValue().GetValue() != nil
 	value, valueType := attributeValue(plain)
-	return jsonModel.KeyValue{Key: attribute.GetKey(), Value: value, Type: valueType}, unread
+	return jsonModel.KeyValue{Key: attribute.GetKey(), Type: valueType, Value: value}, unread
 }
 
 // attributeValue maps an OTLP attribute value, as plainValue returns it, onto a Jaeger tag value

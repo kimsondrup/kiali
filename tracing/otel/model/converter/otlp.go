@@ -84,17 +84,17 @@ func TraceFromOTLP(traces *tracepb.TracesData) *jsonModel.Trace {
 
 // traceBuilder collects the spans of one trace together with the process table they resolve in.
 type traceBuilder struct {
-	traceID   jsonModel.TraceID
-	spans     []jsonModel.Span
-	processes map[jsonModel.ProcessID]jsonModel.Process
 	keys      map[string]jsonModel.ProcessID
+	processes map[jsonModel.ProcessID]jsonModel.Process
+	spans     []jsonModel.Span
+	traceID   jsonModel.TraceID
 }
 
 func newTraceBuilder(traceID jsonModel.TraceID) *traceBuilder {
 	return &traceBuilder{
-		traceID:   traceID,
-		processes: map[jsonModel.ProcessID]jsonModel.Process{},
 		keys:      map[string]jsonModel.ProcessID{},
+		processes: map[jsonModel.ProcessID]jsonModel.Process{},
+		traceID:   traceID,
 	}
 }
 
@@ -129,11 +129,11 @@ func (b *traceBuilder) trace() jsonModel.Trace {
 		spans = []jsonModel.Span{}
 	}
 	return jsonModel.Trace{
-		TraceID:   b.traceID,
-		Spans:     spans,
-		Processes: b.processes,
-		Warnings:  []string{},
 		Matched:   len(spans),
+		Processes: b.processes,
+		Spans:     spans,
+		TraceID:   b.traceID,
+		Warnings:  []string{},
 	}
 }
 
@@ -183,16 +183,16 @@ func spanFromOTLP(span *tracepb.Span, traceID jsonModel.TraceID, scope *commonpb
 	}
 
 	return jsonModel.Span{
-		TraceID:       traceID,
-		SpanID:        spanID,
-		OperationName: span.GetName(),
-		StartTime:     span.GetStartTimeUnixNano() / 1000,
 		Duration:      durationMicros(span, spanID),
-		References:    referencesFromParent(traceID, jsonModel.SpanID(hex.EncodeToString(span.GetParentSpanId()))),
-		Tags:          tagsFromSpan(span, spanID, scope),
-		Logs:          []jsonModel.Log{},
-		Warnings:      []string{},
 		Flags:         0,
+		Logs:          []jsonModel.Log{},
+		OperationName: span.GetName(),
+		References:    referencesFromParent(traceID, jsonModel.SpanID(hex.EncodeToString(span.GetParentSpanId()))),
+		SpanID:        spanID,
+		StartTime:     span.GetStartTimeUnixNano() / 1000,
+		Tags:          tagsFromSpan(span, spanID, scope),
+		TraceID:       traceID,
+		Warnings:      []string{},
 	}, true
 }
 

@@ -55,16 +55,16 @@ const (
 // fields are properties of the transport, not of the payload, because neither
 // can be told from the bytes.
 type Options struct {
+	// IDEncoding is how the backend renders trace and span IDs. It has no usable
+	// zero value, and a body decoded under the wrong encoding is caught by the
+	// width of the IDs it produces rather than by protojson.
+	IDEncoding IDEncoding
+
 	// RootKey is the single object key the payload is wrapped in, empty when the
 	// body already is an OTLP TracesData. The wrapped value is read as a
 	// TracesData when it is an object and as the resource spans array when it is
 	// an array, which is the whole difference between api_v3 and Tempo.
 	RootKey string
-
-	// IDEncoding is how the backend renders trace and span IDs. It has no usable
-	// zero value, and a body decoded under the wrong encoding is caught by the
-	// width of the IDs it produces rather than by protojson.
-	IDEncoding IDEncoding
 }
 
 // Decode turns an OTLP/JSON body into a TracesData.

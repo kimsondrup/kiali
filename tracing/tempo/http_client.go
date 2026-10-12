@@ -99,7 +99,7 @@ func (oc *OtelHTTPClient) GetTraceDetailHTTP(ctx context.Context, client http.Cl
 
 	// Tempo's trace detail is OTLP under a key of its own naming, with its IDs in the base64 the
 	// OTLP/JSON mapping gives a bytes field.
-	traces, errDecode := otlp.Decode(resp, otlp.Options{RootKey: otlp.RootKeyBatches, IDEncoding: otlp.Base64})
+	traces, errDecode := otlp.Decode(resp, otlp.Options{IDEncoding: otlp.Base64, RootKey: otlp.RootKeyBatches})
 	if errDecode != nil {
 		zl.Error().Msgf("[HTTP Tempo] Error reading the trace detail response: %s [URL: %v]", errDecode, u)
 		return nil, errDecode

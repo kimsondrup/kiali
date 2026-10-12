@@ -25,7 +25,7 @@ func TestDecodeAPIV3SearchOverHTTP(t *testing.T) {
 	assert := assert.New(t)
 	require := require.New(t)
 
-	traces, err := Decode(fixture(t, apiv3SearchHTTP), Options{RootKey: RootKeyResult, IDEncoding: Hex})
+	traces, err := Decode(fixture(t, apiv3SearchHTTP), Options{IDEncoding: Hex, RootKey: RootKeyResult})
 	require.NoError(err)
 
 	// Three traces spread over six resource spans: a trace straddles them, so a
@@ -44,7 +44,7 @@ func TestDecodeAPIV3TraceOverHTTP(t *testing.T) {
 	assert := assert.New(t)
 	require := require.New(t)
 
-	traces, err := Decode(fixture(t, apiv3TraceHTTP), Options{RootKey: RootKeyResult, IDEncoding: Hex})
+	traces, err := Decode(fixture(t, apiv3TraceHTTP), Options{IDEncoding: Hex, RootKey: RootKeyResult})
 	require.NoError(err)
 
 	all := spans(traces)
@@ -65,7 +65,7 @@ func TestDecodeAPIV3TraceIsTheSameOverBothTransports(t *testing.T) {
 	assert := assert.New(t)
 	require := require.New(t)
 
-	overHTTP, err := Decode(fixture(t, apiv3TraceHTTP), Options{RootKey: RootKeyResult, IDEncoding: Hex})
+	overHTTP, err := Decode(fixture(t, apiv3TraceHTTP), Options{IDEncoding: Hex, RootKey: RootKeyResult})
 	require.NoError(err)
 	overGRPC, err := Decode(fixture(t, apiv3TraceGRPC), Options{IDEncoding: Base64})
 	require.NoError(err)
@@ -85,7 +85,7 @@ func TestDecodeTempoTraceOverHTTP(t *testing.T) {
 	assert := assert.New(t)
 	require := require.New(t)
 
-	traces, err := Decode(fixture(t, tempoTraceHTTP), Options{RootKey: RootKeyBatches, IDEncoding: Base64})
+	traces, err := Decode(fixture(t, tempoTraceHTTP), Options{IDEncoding: Base64, RootKey: RootKeyBatches})
 	require.NoError(err)
 
 	all := spans(traces)
@@ -130,11 +130,11 @@ func TestBareProtojsonCorruptsAPIV3IDs(t *testing.T) {
 func TestDecodeRejectsABodyReadUnderTheWrongIDEncoding(t *testing.T) {
 	assert := assert.New(t)
 
-	traces, err := Decode(fixture(t, apiv3TraceHTTP), Options{RootKey: RootKeyResult, IDEncoding: Base64})
+	traces, err := Decode(fixture(t, apiv3TraceHTTP), Options{IDEncoding: Base64, RootKey: RootKeyResult})
 	assert.ErrorContains(err, "24-byte trace ID")
 	assert.Nil(traces)
 
-	traces, err = Decode(fixture(t, apiv3SearchHTTP), Options{RootKey: RootKeyResult, IDEncoding: Base64})
+	traces, err = Decode(fixture(t, apiv3SearchHTTP), Options{IDEncoding: Base64, RootKey: RootKeyResult})
 	assert.ErrorContains(err, "24-byte trace ID")
 	assert.Nil(traces)
 }
@@ -144,7 +144,7 @@ func TestDecodeRejectsABodyReadUnderTheWrongIDEncoding(t *testing.T) {
 func TestDecodeRejectsAnIDThatIsNotHex(t *testing.T) {
 	body := `{"result":{"resourceSpans":[{"scopeSpans":[{"spans":[{"traceId":"ZZZZ","spanId":"b5333aff2933f5c5","name":"n"}]}]}]}}`
 
-	traces, err := Decode([]byte(body), Options{RootKey: RootKeyResult, IDEncoding: Hex})
+	traces, err := Decode([]byte(body), Options{IDEncoding: Hex, RootKey: RootKeyResult})
 	assert.ErrorContains(t, err, `span "n" carries a 3-byte trace ID, not 16`)
 	assert.Nil(t, traces)
 }
@@ -164,7 +164,7 @@ func TestDecodeAcceptsAnUnpaddedHexID(t *testing.T) {
 		"links": [{"traceId": "999b181dcef7e89335c110d4a7ea6fe", "spanId": "307fa7d04e21497"}]
 	}]}]}]}}`
 
-	traces, err := Decode([]byte(body), Options{RootKey: RootKeyResult, IDEncoding: Hex})
+	traces, err := Decode([]byte(body), Options{IDEncoding: Hex, RootKey: RootKeyResult})
 	require.NoError(err)
 
 	all := spans(traces)
@@ -182,7 +182,7 @@ func TestDecodeAcceptsAnUnpaddedHexID(t *testing.T) {
 func TestDecodeRejectsATruncatedID(t *testing.T) {
 	body := `{"batches":[{"scopeSpans":[{"spans":[{"traceId":"ITLK","spanId":"tTM6/ykz9cU=","name":"n"}]}]}]}`
 
-	traces, err := Decode([]byte(body), Options{RootKey: RootKeyBatches, IDEncoding: Base64})
+	traces, err := Decode([]byte(body), Options{IDEncoding: Base64, RootKey: RootKeyBatches})
 	assert.ErrorContains(t, err, `span "n" carries a 3-byte trace ID, not 16`)
 	assert.Nil(t, traces)
 }
@@ -201,7 +201,7 @@ func TestDecodeAccumulatesConcatenatedObjects(t *testing.T) {
 	one := fixture(t, apiv3TraceHTTP)
 	body := append(append([]byte{}, one...), one...)
 
-	traces, err := Decode(body, Options{RootKey: RootKeyResult, IDEncoding: Hex})
+	traces, err := Decode(body, Options{IDEncoding: Hex, RootKey: RootKeyResult})
 	require.NoError(err)
 	assert.Len(spans(traces), 6)
 	assert.Len(traceIDs(traces), 1)
@@ -217,15 +217,15 @@ func TestDecodeOddPayloads(t *testing.T) {
 	}{
 		"api_v3 empty result": {
 			body: `{"result":{}}`,
-			opts: Options{RootKey: RootKeyResult, IDEncoding: Hex},
+			opts: Options{IDEncoding: Hex, RootKey: RootKeyResult},
 		},
 		"api_v3 no resource spans": {
 			body: `{"result":{"resourceSpans":[]}}`,
-			opts: Options{RootKey: RootKeyResult, IDEncoding: Hex},
+			opts: Options{IDEncoding: Hex, RootKey: RootKeyResult},
 		},
 		"tempo no batches": {
 			body: `{"batches":[]}`,
-			opts: Options{RootKey: RootKeyBatches, IDEncoding: Base64},
+			opts: Options{IDEncoding: Base64, RootKey: RootKeyBatches},
 		},
 		"bare traces data": {
 			body: `{}`,
@@ -233,23 +233,23 @@ func TestDecodeOddPayloads(t *testing.T) {
 		},
 		"resource span with no scope spans": {
 			body:          `{"result":{"resourceSpans":[{"resource":{}}]}}`,
-			opts:          Options{RootKey: RootKeyResult, IDEncoding: Hex},
+			opts:          Options{IDEncoding: Hex, RootKey: RootKeyResult},
 			resourceSpans: 1,
 		},
 		"scope span with no spans": {
 			body:          `{"result":{"resourceSpans":[{"scopeSpans":[{}]}]}}`,
-			opts:          Options{RootKey: RootKeyResult, IDEncoding: Hex},
+			opts:          Options{IDEncoding: Hex, RootKey: RootKeyResult},
 			resourceSpans: 1,
 		},
 		"api_v3 one span": {
 			body:          `{"result":{"resourceSpans":[{"scopeSpans":[{"spans":[{"traceId":"2132caa05ca64c82454600288b27f3b4","spanId":"b5333aff2933f5c5","name":"n"}]}]}]}}`,
-			opts:          Options{RootKey: RootKeyResult, IDEncoding: Hex},
+			opts:          Options{IDEncoding: Hex, RootKey: RootKeyResult},
 			resourceSpans: 1,
 			spans:         1,
 		},
 		"tempo two spans in one batch": {
 			body:          `{"batches":[{"scopeSpans":[{"spans":[{"traceId":"ITLKoFymTIJFRgAoiyfztA==","spanId":"tTM6/ykz9cU=","name":"n"},{"traceId":"ITLKoFymTIJFRgAoiyfztA==","spanId":"mvdAi4Mg8i8=","name":"m"}]}]}]}`,
-			opts:          Options{RootKey: RootKeyBatches, IDEncoding: Base64},
+			opts:          Options{IDEncoding: Base64, RootKey: RootKeyBatches},
 			resourceSpans: 1,
 			spans:         2,
 		},
@@ -258,7 +258,7 @@ func TestDecodeOddPayloads(t *testing.T) {
 		// same root key reads unchanged.
 		"an object under the root key": {
 			body:          `{"metrics":{"inspectedBytes":"1234"},"trace":{"resourceSpans":[{"scopeSpans":[{"spans":[{"traceId":"ITLKoFymTIJFRgAoiyfztA==","spanId":"tTM6/ykz9cU=","name":"n"}]}]}]}}`,
-			opts:          Options{RootKey: RootKeyTrace, IDEncoding: Base64},
+			opts:          Options{IDEncoding: Base64, RootKey: RootKeyTrace},
 			resourceSpans: 1,
 			spans:         1,
 		},
@@ -268,22 +268,22 @@ func TestDecodeOddPayloads(t *testing.T) {
 		// the input: a timestamp that cannot be read is now the body's problem, not one span's.
 		"an end time that is empty": {
 			body:    `{"batches":[{"scopeSpans":[{"spans":[{"traceId":"ITLKoFymTIJFRgAoiyfztA==","spanId":"tTM6/ykz9cU=","name":"n","startTimeUnixNano":"1693389472310270000","endTimeUnixNano":""}]}]}]}`,
-			opts:    Options{RootKey: RootKeyBatches, IDEncoding: Base64},
+			opts:    Options{IDEncoding: Base64, RootKey: RootKeyBatches},
 			wantErr: `invalid value for fixed64 field endTimeUnixNano`,
 		},
 		"an end time that is not a number": {
 			body:    `{"batches":[{"scopeSpans":[{"spans":[{"traceId":"ITLKoFymTIJFRgAoiyfztA==","spanId":"tTM6/ykz9cU=","name":"n","startTimeUnixNano":"1693389472310270000","endTimeUnixNano":"soon"}]}]}]}`,
-			opts:    Options{RootKey: RootKeyBatches, IDEncoding: Base64},
+			opts:    Options{IDEncoding: Base64, RootKey: RootKeyBatches},
 			wantErr: `invalid value for fixed64 field endTimeUnixNano`,
 		},
 		"an object under a root key the transport did not name": {
 			body:    `{"metrics":{"inspectedBytes":"1234"},"trace":{"resourceSpans":[]}}`,
-			opts:    Options{RootKey: RootKeyBatches, IDEncoding: Base64},
+			opts:    Options{IDEncoding: Base64, RootKey: RootKeyBatches},
 			wantErr: `carries no "batches" key`,
 		},
 		"a search answer sent as a trace detail": {
 			body:    `{"traces":[]}`,
-			opts:    Options{RootKey: RootKeyBatches, IDEncoding: Base64},
+			opts:    Options{IDEncoding: Base64, RootKey: RootKeyBatches},
 			wantErr: `carries no "batches" key`,
 		},
 		// An envelope with no keys at all is the one shape that means no spans
@@ -292,40 +292,40 @@ func TestDecodeOddPayloads(t *testing.T) {
 		// carries keys, which is what keeps the two apart.
 		"an envelope with no keys at all": {
 			body: `{}`,
-			opts: Options{RootKey: RootKeyResult, IDEncoding: Hex},
+			opts: Options{IDEncoding: Hex, RootKey: RootKeyResult},
 		},
 		"a tempo envelope with no keys at all": {
 			body: `{}`,
-			opts: Options{RootKey: RootKeyBatches, IDEncoding: Base64},
+			opts: Options{IDEncoding: Base64, RootKey: RootKeyBatches},
 		},
 		"api_v3 not-found body": {
 			body:    `{"error":{"httpCode":404,"message":"No traces found"}}`,
-			opts:    Options{RootKey: RootKeyResult, IDEncoding: Hex},
+			opts:    Options{IDEncoding: Hex, RootKey: RootKeyResult},
 			wantErr: `carries no "result" key`,
 		},
 		"an HTML error page": {
 			body:    "<html><body>502 Bad Gateway</body></html>",
-			opts:    Options{RootKey: RootKeyResult, IDEncoding: Hex},
+			opts:    Options{IDEncoding: Hex, RootKey: RootKeyResult},
 			wantErr: "unreadable body",
 		},
 		"truncated json": {
 			body:    `{"result":{"resourceSpans":[{"scopeSpans":`,
-			opts:    Options{RootKey: RootKeyResult, IDEncoding: Hex},
+			opts:    Options{IDEncoding: Hex, RootKey: RootKeyResult},
 			wantErr: "unreadable body",
 		},
 		"empty body": {
 			body:    "",
-			opts:    Options{RootKey: RootKeyResult, IDEncoding: Hex},
+			opts:    Options{IDEncoding: Hex, RootKey: RootKeyResult},
 			wantErr: "empty body",
 		},
 		"whitespace only": {
 			body:    "\n  \n",
-			opts:    Options{RootKey: RootKeyResult, IDEncoding: Hex},
+			opts:    Options{IDEncoding: Hex, RootKey: RootKeyResult},
 			wantErr: "empty body",
 		},
 		"a json array where an object belongs": {
 			body:    `[]`,
-			opts:    Options{RootKey: RootKeyResult, IDEncoding: Hex},
+			opts:    Options{IDEncoding: Hex, RootKey: RootKeyResult},
 			wantErr: "unreadable body",
 		},
 		// The OTLP specification makes ignoring an unknown field a MUST, so a
@@ -333,12 +333,12 @@ func TestDecodeOddPayloads(t *testing.T) {
 		// is that it is dropped with nothing said about it.
 		"an unknown field beside the payload": {
 			body:          `{"result":{"resourceSpans":[],"traceSummaries":[]}}`,
-			opts:          Options{RootKey: RootKeyResult, IDEncoding: Hex},
+			opts:          Options{IDEncoding: Hex, RootKey: RootKeyResult},
 			resourceSpans: 0,
 		},
 		"an unknown field beside a span": {
 			body:          `{"result":{"resourceSpans":[{"scopeSpans":[{"spans":[{"traceId":"2132caa05ca64c82454600288b27f3b4","spanId":"b5333aff2933f5c5","name":"n","futureField":{"a":1}}]}]}]}}`,
-			opts:          Options{RootKey: RootKeyResult, IDEncoding: Hex},
+			opts:          Options{IDEncoding: Hex, RootKey: RootKeyResult},
 			resourceSpans: 1,
 			spans:         1,
 		},
@@ -376,17 +376,17 @@ func TestDecodeNamesTheKeysAnEnvelopeCarried(t *testing.T) {
 	}{
 		"a jaeger body sent to the tempo detail path": {
 			body: `{"data":[{"traceID":"abc","spans":[]}],"total":0}`,
-			opts: Options{RootKey: RootKeyBatches, IDEncoding: Base64},
+			opts: Options{IDEncoding: Base64, RootKey: RootKeyBatches},
 			want: `no "batches" key, only ["data" "total"]`,
 		},
 		"a tempo v2 body read under the v1 envelope": {
 			body: `{"metrics":{"inspectedBytes":"1234"},"trace":{"resourceSpans":[]}}`,
-			opts: Options{RootKey: RootKeyBatches, IDEncoding: Base64},
+			opts: Options{IDEncoding: Base64, RootKey: RootKeyBatches},
 			want: `no "batches" key, only ["metrics" "trace"]`,
 		},
 		"an api_v3 error body": {
 			body: `{"error":{"httpCode":404,"message":"No traces found"}}`,
-			opts: Options{RootKey: RootKeyResult, IDEncoding: Hex},
+			opts: Options{IDEncoding: Hex, RootKey: RootKeyResult},
 			want: `no "result" key, only ["error"]`,
 		},
 	}
@@ -495,7 +495,7 @@ func TestDecodeWireFormsOfEnumsAndTimestamps(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			body := `{"batches":[{"scopeSpans":[{"spans":[{"traceId":"ITLKoFymTIJFRgAoiyfztA==","spanId":"tTM6/ykz9cU=","name":"n",` + tc.span + `}]}]}]}`
 
-			traces, err := Decode([]byte(body), Options{RootKey: RootKeyBatches, IDEncoding: Base64})
+			traces, err := Decode([]byte(body), Options{IDEncoding: Base64, RootKey: RootKeyBatches})
 			if tc.wantErr != "" {
 				assert.ErrorContains(t, err, tc.wantErr)
 				assert.Nil(t, traces)

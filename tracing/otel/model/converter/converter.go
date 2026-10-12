@@ -101,16 +101,15 @@ func convertOtelSpan(span *querypb.Span, serviceName string, traceID jsonModel.T
 
 	spanID := convertSpanId(span.GetSpanID())
 	modelSpan := jsonModel.Span{
-		SpanID:    spanID,
-		TraceID:   traceID,
-		Duration:  duration / 1000, // Provided in ns, Jaeger uses ms
-		StartTime: span.GetStartTimeUnixNano() / 1000,
-		// No more mapped data
+		Duration:      duration / 1000, // Provided in ns, Jaeger uses ms
 		Flags:         0,
-		References:    []jsonModel.Reference{},
-		Tags:          convertAttributes(span.GetAttributes(), spanID),
 		Logs:          []jsonModel.Log{},
 		OperationName: operationName,
+		References:    []jsonModel.Reference{},
+		SpanID:        spanID,
+		StartTime:     span.GetStartTimeUnixNano() / 1000,
+		Tags:          convertAttributes(span.GetAttributes(), spanID),
+		TraceID:       traceID,
 		Warnings:      []string{},
 	}
 
@@ -130,7 +129,7 @@ func convertAttributes(attributes []*commonpb.KeyValue, spanID jsonModel.SpanID)
 	var unread []string
 	for _, atb := range attributes {
 		if atb.GetKey() == "status" && atb.GetValue().GetStringValue() == "error" {
-			tags = append(tags, jsonModel.KeyValue{Key: "error", Value: true, Type: jsonModel.BoolType})
+			tags = append(tags, jsonModel.KeyValue{Key: "error", Type: jsonModel.BoolType, Value: true})
 			continue
 		}
 		tag, cannotRead := keyValueFromAttribute(atb)
