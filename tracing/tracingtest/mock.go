@@ -21,6 +21,11 @@ func (j *TracingClientMock) GetAppTraces(ctx context.Context, ns, app string, qu
 
 func (j *TracingClientMock) GetTraceDetail(ctx context.Context, traceId string) (trace *model.TracingSingleTrace, err error) {
 	args := j.Called(ctx, traceId)
+	// A nil first value is a backend that has no such trace; asserting it to the
+	// pointer type would panic before the handler could turn it into a 404.
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
 	return args.Get(0).(*model.TracingSingleTrace), args.Error(1)
 }
 
