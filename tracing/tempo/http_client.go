@@ -213,7 +213,7 @@ func (oc *OtelHTTPClient) transformTrace(traces *querypb.SearchResponse, limit i
 		}
 		// a matched trace carries the spans that matched, and a trace that reports only its
 		// statistics carries none; the service name then stays whatever the last one gave
-		if spans := trace.GetSpanSet().GetSpans(); len(spans) > 0 {
+		if spans := converter.SpanSetOf(trace).GetSpans(); len(spans) > 0 {
 			serviceName = getServiceName(spans[0].GetAttributes())
 		}
 		response.Data = append(response.Data, *converter.ConvertTraceMetadata(trace, serviceName))

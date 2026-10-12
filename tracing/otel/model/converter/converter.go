@@ -31,6 +31,23 @@ func convertSpanId(id string) jsonModel.SpanID {
 	return jsonModel.SpanID(id)
 }
 
+// SpanSetOf reports the span set of a trace matched by Tempo's search, which Tempo sends twice.
+//
+// The singular spanSet is the one upstream means to drop: pkg/traceql's engine populates it for
+// Grafana's sake and says so, and its combiner assigns it from spanSets[0] under a comment calling
+// it deprecated. So the plural is the same set by construction, and it has existed since Tempo
+// 2.2.0, which is the oldest Tempo Kiali can query at all. Reading it leaves the singular as the
+// fallback it already is upstream.
+//
+// The first set is the whole answer for one trace unless the query produced several, which is as
+// true of the singular - upstream picks spanSets[0] for it.
+func SpanSetOf(trace *querypb.TraceSearchMetadata) *querypb.SpanSet {
+	if spanSets := trace.GetSpanSets(); len(spanSets) > 0 {
+		return spanSets[0]
+	}
+	return trace.GetSpanSet()
+}
+
 // ConvertTraceMetadata reports a trace matched by Tempo's search API as a Jaeger-shaped trace.
 // Both of Tempo's search transports reach it, because the search answer is the same document
 // whether it arrived as protobuf over the streaming RPC or as JSON over /api/search.
@@ -48,9 +65,10 @@ func ConvertTraceMetadata(trace *querypb.TraceSearchMetadata, serviceName string
 	process := jsonModel.Process{ServiceName: serviceName, Tags: []jsonModel.KeyValue{}}
 
 	// A matched trace carries the spans that matched, and a trace reporting only its statistics
-	// carries no span set at all. The field is a pointer, so reaching into it is a nil
-	// dereference rather than an empty range.
-	for _, span := range trace.GetSpanSet().GetSpans() {
+	// carries no span set at all. The set is a pointer, so reaching into it is a nil dereference
+	// rather than an empty range.
+	spanSet := SpanSetOf(trace)
+	for _, span := range spanSet.GetSpans() {
 		converted, ok := convertOtelSpan(span, serviceName, traceID, trace.GetRootTraceName())
 		if !ok {
 			continue
@@ -62,7 +80,7 @@ func ConvertTraceMetadata(trace *querypb.TraceSearchMetadata, serviceName string
 	// Matched is the number of spans of this trace the query matched, which the scatter plot
 	// draws a trace's bubble from. It is not len(spans): SpansPerSpanSet bounds how many of them
 	// the answer carries, so a trace that matched six spans arrives with ten at most.
-	converted.Matched = int(trace.GetSpanSet().GetMatched())
+	converted.Matched = int(spanSet.GetMatched())
 	return &converted
 }
 

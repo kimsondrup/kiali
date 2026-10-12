@@ -236,6 +236,74 @@ func TestConvertTraceMetadataWithAnEmptySpanSet(t *testing.T) {
 	assert.Empty(t, converted.Spans)
 }
 
+// TestConvertTraceMetadataReadsEitherSpellingOfTheSpanSet covers the two spellings Tempo sends a
+// matched trace's span set under. The singular is the one upstream says it means to drop, and its
+// combiner assigns it from spanSets[0], so the plural is the same set and the one to read.
+func TestConvertTraceMetadataReadsEitherSpellingOfTheSpanSet(t *testing.T) {
+	spanSet := func(spanID string, matched uint32) *querypb.SpanSet {
+		return &querypb.SpanSet{
+			Matched: matched,
+			Spans: []*querypb.Span{{
+				SpanID:            spanID,
+				Name:              "reviews.bookinfo.svc.cluster.local:9080/*",
+				StartTimeUnixNano: 1693389472310270000,
+				DurationNanos:     646000,
+			}},
+		}
+	}
+
+	cases := map[string]struct {
+		trace           *querypb.TraceSearchMetadata
+		expectedSpanID  jsonModel.SpanID
+		expectedMatched int
+	}{
+		"both spellings, as every Tempo sends them": {
+			trace: &querypb.TraceSearchMetadata{
+				SpanSet:  spanSet("2e6ca056f5fc6fdc", 6),
+				SpanSets: []*querypb.SpanSet{spanSet("2e6ca056f5fc6fdc", 6)},
+			},
+			expectedSpanID:  "2e6ca056f5fc6fdc",
+			expectedMatched: 6,
+		},
+		"the plural alone, which is what outlives the singular": {
+			trace: &querypb.TraceSearchMetadata{
+				SpanSets: []*querypb.SpanSet{spanSet("5d7ab9e039d25ebd", 2)},
+			},
+			expectedSpanID:  "5d7ab9e039d25ebd",
+			expectedMatched: 2,
+		},
+		"the singular alone": {
+			trace: &querypb.TraceSearchMetadata{
+				SpanSet: spanSet("aa11bb22cc33dd44", 1),
+			},
+			expectedSpanID:  "aa11bb22cc33dd44",
+			expectedMatched: 1,
+		},
+		// Tempo keeps the two equal, so a disagreement is the only way to observe which one
+		// decides. It is the plural, because the singular is the field upstream is retiring.
+		"spellings that disagree": {
+			trace: &querypb.TraceSearchMetadata{
+				SpanSet:  spanSet("aa11bb22cc33dd44", 1),
+				SpanSets: []*querypb.SpanSet{spanSet("2e6ca056f5fc6fdc", 6)},
+			},
+			expectedSpanID:  "2e6ca056f5fc6fdc",
+			expectedMatched: 6,
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			tc.trace.TraceID = "b70b02766cb83333631f6654cc518265"
+
+			converted := ConvertTraceMetadata(tc.trace, "reviews.bookinfo")
+
+			require.Len(t, converted.Spans, 1)
+			assert.Equal(t, tc.expectedSpanID, converted.Spans[0].SpanID)
+			assert.Equal(t, tc.expectedMatched, converted.Matched)
+		})
+	}
+}
+
 // TestConvertAttributes covers the attributes of a span matched by Tempo's search API. They are
 // OTLP attributes embedded in a document that is not OTLP, and they reach Jaeger's typed
 // key-value through the same decision the trace detail path makes, so a port or a status code

@@ -507,6 +507,38 @@ func TestGetTracesWithoutSpanSet(t *testing.T) {
 	assert.Empty(t, response.Data[0].Warnings)
 }
 
+// TestGetTracesFromSpanSetsOnly covers a search answer that sends only the plural spelling of the
+// span set. Tempo sends both today and says in code that the singular is the one it means to
+// drop, so a trace reported with no spans is what reading only the singular comes to.
+func TestGetTracesFromSpanSetsOnly(t *testing.T) {
+	body := `{"traces":[{"traceID":"aa00000000000000000000000000000a","spanSets":[{"matched":4,"spans":[` +
+		`{"spanID":"0101010101010101","startTimeUnixNano":"1701779876570888000","durationNanos":"1000",` +
+		`"attributes":[{"key":"service.name","value":{"stringValue":"reviews.bookinfo"}}]}]}]}],"metrics":{}}`
+
+	httpClient := http.Client{Transport: RoundTripFunc(func(req *http.Request) *http.Response {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(body)),
+		}
+	})}
+
+	tempoClient, err := NewOtelClient(context.TODO())
+	require.NoError(t, err)
+
+	response, err := tempoClient.GetAppTracesHTTP(context.Background(), httpClient, getBaseUrl(), serviceName, models.TracingQuery{})
+	require.NoError(t, err)
+	require.Len(t, response.Data, 1)
+	require.Len(t, response.Data[0].Spans, 1)
+	assert.Equal(t, json.SpanID("0101010101010101"), response.Data[0].Spans[0].SpanID)
+	assert.Equal(t, 4, response.Data[0].Matched)
+	// The process table is minted from the service name the matched spans report, which is read
+	// from the same span set.
+	require.Len(t, response.Data[0].Processes, 1)
+	for _, process := range response.Data[0].Processes {
+		assert.Equal(t, "reviews.bookinfo", process.ServiceName)
+	}
+}
+
 // TestUnreadableSearchBody covers a 200 whose body is not a Tempo search answer, so a wrong
 // endpoint gives a meaningful error instead of an empty trace list.
 func TestUnreadableSearchBody(t *testing.T) {
