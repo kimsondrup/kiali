@@ -1,14 +1,12 @@
 package converter
 
 import (
-	"strconv"
 	"strings"
 
 	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
 
 	"github.com/kiali/kiali/log"
 	jaegerModels "github.com/kiali/kiali/tracing/jaeger/model/json"
-	otel "github.com/kiali/kiali/tracing/otel/model"
 	"github.com/kiali/kiali/tracing/tempo/querypb"
 )
 
@@ -55,52 +53,76 @@ func SearchTrace(traceID jaegerModels.TraceID, spans []jaegerModels.Span, matche
 	}
 }
 
-// ConvertTraceMetadata used by the GRPC Client
+// ConvertTraceMetadata reports a trace matched by Tempo's search API as a Jaeger-shaped trace.
+// Both of Tempo's search transports reach it, because the search answer is the same document
+// whether it arrived as protobuf over the streaming RPC or as JSON over /api/search.
 //
 // The metadata is taken by pointer because a generated message carries a mutex, so copying one is
 // what go vet's copylocks reports.
 func ConvertTraceMetadata(trace *querypb.TraceSearchMetadata, serviceName string) *jaegerModels.Trace {
-	traceID := ConvertId(trace.TraceID)
+	traceID := ConvertId(trace.GetTraceID())
 
 	var spans []jaegerModels.Span
 	// A matched trace carries the spans that matched, and a trace reporting only its statistics
 	// carries no span set at all. The field is a pointer, so reaching into it is a nil
 	// dereference rather than an empty range.
 	for _, span := range trace.GetSpanSet().GetSpans() {
-		spans = append(spans, convertOtelSpan(span, serviceName, traceID, trace.RootTraceName))
+		converted, ok := convertOtelSpan(span, serviceName, traceID, trace.GetRootTraceName())
+		if !ok {
+			continue
+		}
+		spans = append(spans, converted)
 	}
 
-	jaegerTrace := SearchTrace(traceID, spans, len(spans))
+	// Matched is the number of spans of this trace the query matched, which the scatter plot
+	// draws a trace's bubble from. It is not len(spans): SpansPerSpanSet bounds how many of them
+	// the answer carries, so a trace that matched six spans arrives with ten at most.
+	jaegerTrace := SearchTrace(traceID, spans, int(trace.GetSpanSet().GetMatched()))
 	return &jaegerTrace
 }
 
-// convertOtelSpan used for GRPC format Spans
-func convertOtelSpan(span *querypb.Span, serviceName string, traceID jaegerModels.TraceID, rootTrace string) jaegerModels.Span {
-	// Tempo subtracts this duration itself and the subtraction is unsigned, so a span whose end
-	// precedes its start arrives already wrapped round. The rule is the same as on the HTTP search
-	// path: at or above 2^63 nanoseconds the value is a wrap rather than a duration.
-	duration := span.DurationNanos
+// convertOtelSpan reports one span matched by Tempo's search API as a Jaeger span. The second
+// return is false for a span the caller must drop.
+func convertOtelSpan(span *querypb.Span, serviceName string, traceID jaegerModels.TraceID, rootTrace string) (jaegerModels.Span, bool) {
+	// A span with no start time is not placed anywhere on a timeline, and reporting it with a
+	// start time of zero places it at the Unix epoch instead - in the trace list, in the heatmap
+	// and in the Metrics-tab span overlay, all of which read this path.
+	if span.GetStartTimeUnixNano() == 0 {
+		log.Errorf("Span [%s] of trace [%s] on service [%s] has no start time. Skipping span",
+			span.GetSpanID(), traceID, serviceName)
+		return jaegerModels.Span{}, false
+	}
+
+	// Tempo computes this duration itself, as an unsigned subtraction, so a span whose end
+	// precedes its start arrives already wrapped round rather than as two timestamps this function
+	// can compare: 18446744073705551616ns, for instance, is 584 years. Any nanosecond duration at
+	// or above 2^63 is such a wrap and not a duration, because the longest honest one is bounded
+	// by the time since the epoch, which is under 2^61.
+	duration := span.GetDurationNanos()
 	if duration >= 1<<63 {
 		log.Warningf("Span [%s] of trace [%s] reports a duration of [%d]ns, which is a wrapped negative; reporting a zero duration",
-			span.SpanID, traceID, duration)
+			span.GetSpanID(), traceID, duration)
 		duration = 0
 	}
 
+	// The span carries its own name and the trace's root name is the fallback for one that
+	// reported none. business.getFilteredSpans matches the operation name against the service it
+	// queried, so a span named after the trace's root is a span that service does not see.
 	operationName := rootTrace
-	if span.Name != "" {
-		operationName = span.Name
+	if span.GetName() != "" {
+		operationName = span.GetName()
 	}
 
-	spanID := convertSpanId(span.SpanID)
+	spanID := convertSpanId(span.GetSpanID())
 	modelSpan := jaegerModels.Span{
 		SpanID:    spanID,
 		TraceID:   traceID,
-		Duration:  duration / 1000,
-		StartTime: span.StartTimeUnixNano / 1000,
+		Duration:  duration / 1000, // Provided in ns, Jaeger uses ms
+		StartTime: span.GetStartTimeUnixNano() / 1000,
 		// No more mapped data
 		Flags:         0,
 		References:    []jaegerModels.Reference{},
-		Tags:          convertAttributes(span.Attributes, spanID),
+		Tags:          convertAttributes(span.GetAttributes(), spanID),
 		Logs:          []jaegerModels.Log{},
 		OperationName: operationName,
 		ProcessID:     "",
@@ -108,69 +130,7 @@ func convertOtelSpan(span *querypb.Span, serviceName string, traceID jaegerModel
 		Warnings:      []string{},
 	}
 
-	return modelSpan
-}
-
-func ConvertSpanSet(span otel.Span, serviceName string, traceId string, rootName string) []jaegerModels.Span {
-	var toRet []jaegerModels.Span
-
-	startTime, err := strconv.ParseUint(span.StartTimeUnixNano, 10, 64)
-	if err != nil {
-		log.Errorf("Could not read the start time %q of span [%s] in trace [%s], skipping span: %s",
-			span.StartTimeUnixNano, span.SpanID, traceId, err)
-		return nil
-	}
-	// A span with no start time is not placed anywhere on a timeline, and reporting it with a
-	// start time of zero places it at the Unix epoch instead - in the trace list, in the
-	// heatmap and in the Metrics-tab span overlay, all of which read this path.
-	if startTime == 0 {
-		log.Errorf("Span [%s] of trace [%s] on service [%s] has no start time. Skipping span",
-			span.SpanID, traceId, serviceName)
-		return nil
-	}
-	duration, err := strconv.ParseUint(span.DurationNanos, 10, 64)
-	if err != nil {
-		log.Errorf("Could not read the duration %q of span [%s] in trace [%s]: %s",
-			span.DurationNanos, span.SpanID, traceId, err)
-	}
-	// Tempo computes this duration itself, as an unsigned subtraction, so a span whose end precedes
-	// its start arrives already wrapped round rather than as two timestamps this function can compare:
-	// 18446744073705551616ns, for instance, is 584 years. Any nanosecond duration at or above 2^63 is
-	// such a wrap and not a duration, because the longest honest one is bounded by the time since the
-	// epoch, which is under 2^61.
-	if duration >= 1<<63 {
-		log.Warningf("Span [%s] of trace [%s] reports a duration of [%d]ns, which is a wrapped negative; reporting a zero duration",
-			span.SpanID, traceId, duration)
-		duration = 0
-	}
-
-	jaegerTraceId := ConvertId(traceId)
-	jaegerSpanId := convertSpanId(span.SpanID)
-	operationName := rootName
-	if span.Name != "" {
-		operationName = span.Name
-	}
-
-	jaegerSpan := jaegerModels.Span{
-		TraceID:   jaegerTraceId,
-		SpanID:    jaegerSpanId,
-		Duration:  duration / 1000, // Provided in ns, Jaeger uses ms
-		StartTime: startTime / 1000,
-		// No more mapped data
-		Flags: 0,
-		// OperationName: span.Name,
-		References:    []jaegerModels.Reference{},
-		Tags:          convertAttributes(span.Attributes, jaegerSpanId),
-		Logs:          []jaegerModels.Log{},
-		OperationName: operationName,
-		ProcessID:     "",
-		Process:       &jaegerModels.Process{Tags: []jaegerModels.KeyValue{}, ServiceName: serviceName},
-		Warnings:      []string{},
-	}
-
-	toRet = append(toRet, jaegerSpan)
-
-	return toRet
+	return modelSpan, true
 }
 
 // convertAttributes reports the attributes of a span matched by Tempo's search API as span tags.

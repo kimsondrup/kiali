@@ -79,8 +79,9 @@ func TestGetTraces(t *testing.T) {
 	assert.NotNil(t, response.Data)
 	assert.Equal(t, response.Data[0].TraceID, json.TraceID("100cb753c787ed5657c8d88dafc176ed"))
 	assert.Equal(t, len(response.Data[0].Spans), 3)
-	// The capture has Tempo reporting six matched spans and sending three of them, so the matched
-	// count has to come off the wire rather than from the length of the span list.
+	// Tempo matched six spans of this trace and sent three of them, because prepareTraceQL bounds
+	// the span set with spss=10 and this capture was taken with a lower bound. The scatter plot
+	// sizes the trace's bubble by the count, so it is the one Tempo reported.
 	assert.Equal(t, 6, response.Data[0].Matched)
 	assert.Equal(t, response.Data[0].Spans[0].OperationName, "productpage.bookinfo.svc.cluster.local:9080/productpage")
 	assert.Equal(t, response.Data[0].Spans[0].Tags[0].Key, "node_id")
@@ -126,6 +127,11 @@ func TestGetAmbientTraces(t *testing.T) {
 	// trace.
 	assert.Equal(t, response.Data[0].TraceID, json.TraceID("02e299711ce47710289dc6640727404f"))
 	assert.Equal(t, len(response.Data[0].Spans), 4)
+	// Every span names the padded trace, not the spelling Tempo sent: a span's trace ID is what a
+	// click on it navigates with, and the trace's own is what the detail is compared against.
+	for _, span := range response.Data[0].Spans {
+		assert.Equal(t, response.Data[0].TraceID, span.TraceID)
+	}
 	assert.Equal(t, response.Data[0].Spans[1].OperationName, "reviews.bookinfo.svc.cluster.local:9080/*")
 	assert.Equal(t, response.Data[0].Spans[1].Tags[2].Key, "node_id")
 	assert.Equal(t, response.Data[0].Spans[1].Tags[2].Value, "waypoint~10.244.0.28~waypoint-5b7c754ccb-55jwk.bookinfo~bookinfo.svc.cluster.local")
@@ -503,6 +509,38 @@ func TestUnreadableSearchBody(t *testing.T) {
 
 			response, err := tempoClient.GetAppTracesHTTP(context.Background(), httpClient, getBaseUrl(), serviceName, models.TracingQuery{})
 			require.Error(t, err, "a body Kiali cannot read must not reach the user as an empty result")
+			assert.Empty(t, response.Data)
+		})
+	}
+}
+
+// TestUnreadableSearchField covers a search answer whose envelope is Tempo's and whose contents
+// are not. The generated stubs name the field, where reading the body field by field would have
+// dropped the span and answered with a trace that has none.
+func TestUnreadableSearchField(t *testing.T) {
+	bodies := map[string]string{
+		"a start time that is not a number": `{"traces":[{"traceID":"aa00000000000000000000000000000a","spanSet":{"spans":[` +
+			`{"spanID":"0101010101010101","startTimeUnixNano":"now","durationNanos":"1000"}]}}]}`,
+		"a span set that is a list": `{"traces":[{"traceID":"aa00000000000000000000000000000a","spanSet":[]}]}`,
+		"an attribute value of the wrong type for its variant": `{"traces":[{"traceID":"aa00000000000000000000000000000a","spanSet":{"spans":[` +
+			`{"spanID":"0101010101010101","startTimeUnixNano":"1701779876570888000","durationNanos":"1000",` +
+			`"attributes":[{"key":"component","value":{"intValue":"not a number"}}]}]}}]}`,
+	}
+
+	for name, body := range bodies {
+		t.Run(name, func(t *testing.T) {
+			httpClient := http.Client{Transport: RoundTripFunc(func(req *http.Request) *http.Response {
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(strings.NewReader(body)),
+				}
+			})}
+
+			tempoClient, err := NewOtelClient(context.TODO())
+			require.NoError(t, err)
+
+			response, err := tempoClient.GetAppTracesHTTP(context.Background(), httpClient, getBaseUrl(), serviceName, models.TracingQuery{})
+			require.Error(t, err, "a field Kiali cannot read must not reach the user as a trace with no spans")
 			assert.Empty(t, response.Data)
 		})
 	}

@@ -40,7 +40,7 @@ const (
 
 // The third duration guard, a pre-computed value at or above 2^63, is not reachable from here:
 // this path subtracts two timestamps itself. It lives on Tempo's search path and is pinned by
-// TestConvertSpanSetDuration and TestConvertTraceMetadataDuration.
+// TestConvertTraceMetadataDuration.
 
 func TestTracesFromOTLPTraceDetail(t *testing.T) {
 	assert := assert.New(t)

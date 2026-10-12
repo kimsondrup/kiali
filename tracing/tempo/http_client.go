@@ -14,16 +14,18 @@ import (
 	"strings"
 	"time"
 
+	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
+	"google.golang.org/protobuf/encoding/protojson"
+
 	"github.com/kiali/kiali/config"
 	"github.com/kiali/kiali/log"
 	"github.com/kiali/kiali/models"
 	"github.com/kiali/kiali/store"
 	"github.com/kiali/kiali/tracing/jaeger/model"
-	jaegerModels "github.com/kiali/kiali/tracing/jaeger/model/json"
 	"github.com/kiali/kiali/tracing/otel"
-	otelModel "github.com/kiali/kiali/tracing/otel/model"
 	"github.com/kiali/kiali/tracing/otel/model/converter"
 	"github.com/kiali/kiali/tracing/otel/otlp"
+	"github.com/kiali/kiali/tracing/tempo/querypb"
 	"github.com/kiali/kiali/util"
 )
 
@@ -191,41 +193,32 @@ func (oc *OtelHTTPClient) queryTracesHTTP(ctx context.Context, client http.Clien
 		return &model.TracingResponse{}, errUnmarshal
 	}
 
-	return oc.transformTrace(ctx, response, error, limit)
+	return oc.transformTrace(response, error, limit), nil
 }
 
-// transformTrace processes every trace ID and make a request to get all the spans for that trace
-func (oc *OtelHTTPClient) transformTrace(ctx context.Context, traces *otelModel.Traces, error string, limit int) (*model.TracingResponse, error) {
+// transformTrace reports the traces a Tempo search matched, dropping those the caller filtered
+// out.
+func (oc *OtelHTTPClient) transformTrace(traces *querypb.SearchResponse, error string, limit int) *model.TracingResponse {
 	var response model.TracingResponse
 	serviceName := ""
 
-	if traces != nil {
-		for i, trace := range traces.Traces {
-			if limit != 0 && i >= limit {
-				break
-			}
-			// a matched trace carries the spans that matched, and a trace that reports only its
-			// statistics carries none; the service name then stays whatever the last one gave
-			if len(trace.SpanSet.Spans) > 0 {
-				serviceName = getServiceName(trace.SpanSet.Spans[0].Attributes)
-			}
-			if error == "true" {
-				if !hasErrors(trace) {
-					continue
-				}
-			}
-			batchTrace, err := convertBatchTrace(trace, serviceName)
-			if err != nil {
-				zl := getLoggerFromContextHTTPTempo(ctx)
-				zl.Error().Msgf("[HTTP Tempo] Error getting trace detail for %s: %v", trace.TraceID, err)
-			} else {
-				response.Data = append(response.Data, batchTrace)
-			}
+	for i, trace := range traces.GetTraces() {
+		if limit != 0 && i >= limit {
+			break
 		}
+		// a matched trace carries the spans that matched, and a trace that reports only its
+		// statistics carries none; the service name then stays whatever the last one gave
+		if spans := trace.GetSpanSet().GetSpans(); len(spans) > 0 {
+			serviceName = getServiceName(spans[0].GetAttributes())
+		}
+		if error == "true" && !hasErrors(trace) {
+			continue
+		}
+		response.Data = append(response.Data, *converter.ConvertTraceMetadata(trace, serviceName))
 	}
 
 	response.TracingServiceName = serviceName
-	return &response, nil
+	return &response
 }
 
 // The keys a Tempo search answer carries. It always has at least one of them, including when it
@@ -235,12 +228,22 @@ const (
 	keyMetrics = "metrics"
 )
 
-func unmarshal(ctx context.Context, r []byte, u *url.URL) (*otelModel.Traces, error) {
+// unmarshalSearch drops a field the IDL does not declare rather than failing on it, which the
+// OTLP specification requires of the attributes the answer embeds and which Tempo's own habit of
+// growing the answer between releases requires of the rest of it: a backend answering ahead of
+// the generated stubs must not be able to blank the traces list. None of the captured responses
+// needs the leniency - it is there for the Tempo that has not shipped yet.
+//
+// What strictness would have bought is bought instead by the envelope check below, which is what
+// tells a Tempo search answer from any other JSON object.
+var unmarshalSearch = protojson.UnmarshalOptions{DiscardUnknown: true}
+
+func unmarshal(ctx context.Context, r []byte, u *url.URL) (*querypb.SearchResponse, error) {
 	zl := getLoggerFromContextHTTPTempo(ctx)
 
 	// Fail when the body is not shaped like a Tempo search answer, so the caller gets an error
-	// rather than a result: the model's fields are all optional, so any JSON object decodes into
-	// it cleanly and comes out as no traces.
+	// rather than a result: every field of the answer is optional, so any JSON object decodes
+	// into it cleanly and comes out as no traces.
 	var envelope map[string]json.RawMessage
 	if errEnvelope := json.Unmarshal(r, &envelope); errEnvelope != nil {
 		zl.Error().Msgf("[HTTP Tempo] Error unmarshalling Tempo API response: %s [URL: %v]", errEnvelope, u)
@@ -253,23 +256,13 @@ func unmarshal(ctx context.Context, r []byte, u *url.URL) (*otelModel.Traces, er
 		return nil, errShape
 	}
 
-	var response otelModel.Traces
-	if errMarshal := json.Unmarshal(r, &response); errMarshal != nil {
+	var response querypb.SearchResponse
+	if errMarshal := unmarshalSearch.Unmarshal(r, &response); errMarshal != nil {
 		zl.Error().Msgf("[HTTP Tempo] Error unmarshalling Tempo API response: %s [URL: %v]", errMarshal, u)
 		return nil, errMarshal
 	}
 
 	return &response, nil
-}
-
-// convertBatchTrace Convert a trace returned by TraceQL query into a jaeger Trace
-func convertBatchTrace(trace otelModel.Trace, serviceName string) (jaegerModels.Trace, error) {
-	var spans []jaegerModels.Span
-	for _, span := range trace.SpanSet.Spans {
-		spans = append(spans, converter.ConvertSpanSet(span, serviceName, trace.TraceID, trace.RootTraceName)...)
-	}
-
-	return converter.SearchTrace(converter.ConvertId(trace.TraceID), spans, trace.SpanSet.Matched), nil
 }
 
 // prepareTraceQL set the query in TraceQL format
@@ -338,9 +331,9 @@ func (oc *OtelHTTPClient) GetTraceQLQuery(ctx context.Context, u *url.URL, traci
 // hasErrors reports whether a matched span of the trace failed. The signal is the "status"
 // attribute, which is the TraceQL status intrinsic prepareTraceQL selects: Tempo answers it as
 // text, and "error" is the value it uses for a span whose OTLP status code is ERROR.
-func hasErrors(trace otelModel.Trace) bool {
-	for _, span := range trace.SpanSet.Spans {
-		for _, atb := range span.Attributes {
+func hasErrors(trace *querypb.TraceSearchMetadata) bool {
+	for _, span := range trace.GetSpanSet().GetSpans() {
+		for _, atb := range span.GetAttributes() {
 			if atb.GetKey() == "status" && atb.GetValue().GetStringValue() == "error" {
 				return true
 			}
@@ -349,7 +342,7 @@ func hasErrors(trace otelModel.Trace) bool {
 	return false
 }
 
-func getServiceName(attributes otlp.Attributes) string {
+func getServiceName(attributes []*commonpb.KeyValue) string {
 	for _, attb := range attributes {
 		if attb.GetKey() == "service.name" {
 			return attb.GetValue().GetStringValue()
