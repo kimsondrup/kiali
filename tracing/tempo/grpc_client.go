@@ -15,23 +15,23 @@ import (
 	"github.com/kiali/kiali/tracing/jaeger/model"
 	jaegerModels "github.com/kiali/kiali/tracing/jaeger/model/json"
 	"github.com/kiali/kiali/tracing/otel/model/converter"
-	"github.com/kiali/kiali/tracing/tempo/tempopb"
+	"github.com/kiali/kiali/tracing/tempo/querypb"
 )
 
 type TempoGRPCClient struct {
-	StreamingClient tempopb.StreamingQuerierClient
+	StreamingClient querypb.StreamingQuerierClient
 }
 
 // New client
 func NewgRPCClient(clientConn *grpc.ClientConn) (otelClient *TempoGRPCClient, err error) {
-	clientStreamTempo := tempopb.NewStreamingQuerierClient(clientConn)
+	clientStreamTempo := querypb.NewStreamingQuerierClient(clientConn)
 	streamClient := TempoGRPCClient{StreamingClient: clientStreamTempo}
 	return &streamClient, nil
 }
 
 func (jc TempoGRPCClient) FindTraces(ctx context.Context, serviceName string, q models.TracingQuery) (response *model.TracingResponse, err error) {
 
-	sr := &tempopb.SearchRequest{}
+	sr := &querypb.SearchRequest{}
 	sr.Start = uint32(q.Start.Unix())
 	sr.End = uint32(q.End.Unix())
 	sr.MinDurationMs = uint32(q.MinDuration.Milliseconds())
@@ -112,7 +112,7 @@ func (jc TempoGRPCClient) GetServices(ctx context.Context) (bool, error) {
 	ctx, cancel := context.WithTimeout(ctx, 4*time.Second)
 	defer cancel()
 
-	sr := &tempopb.SearchRequest{}
+	sr := &querypb.SearchRequest{}
 	stream, err := jc.StreamingClient.Search(ctx, sr)
 	if err != nil {
 		return false, err
@@ -132,7 +132,7 @@ func (jc TempoGRPCClient) GetServicesList(ctx context.Context) ([]string, error)
 	ctx, cancel := context.WithTimeout(ctx, 4*time.Second)
 	defer cancel()
 
-	sr := &tempopb.SearchRequest{}
+	sr := &querypb.SearchRequest{}
 	result, err := jc.StreamingClient.Search(ctx, sr)
 	if err != nil {
 		return nil, err
@@ -157,7 +157,7 @@ func (jc TempoGRPCClient) GetServicesList(ctx context.Context) ([]string, error)
 // A read that times out reports what arrived rather than failing. Because the messages are diffs,
 // that drops whatever the later ones carried, so it is a known defect left for the change that
 // fixes it.
-func processStream(ctx context.Context, stream tempopb.StreamingQuerier_SearchClient, serviceName string) ([]jaegerModels.Trace, error) {
+func processStream(ctx context.Context, stream querypb.StreamingQuerier_SearchClient, serviceName string) ([]jaegerModels.Trace, error) {
 	zl := getLoggerFromContextGRPCTempo(ctx)
 
 	order := []jaegerModels.TraceID{}
@@ -173,7 +173,7 @@ func processStream(ctx context.Context, stream tempopb.StreamingQuerier_SearchCl
 			return nil, fmt.Errorf("[gRPC Tempo] Tracing gRPC client, stream error: %v", err)
 		}
 		for _, trace := range received.Traces {
-			batchTrace, err := converter.ConvertTraceMetadata(*trace, serviceName)
+			batchTrace, err := converter.ConvertTraceMetadata(trace, serviceName)
 			if err != nil {
 				zl.Error().Msgf("[gRPC Tempo] Error getting trace detail for %s: %s", trace.TraceID, err.Error())
 				continue
@@ -193,7 +193,7 @@ func processStream(ctx context.Context, stream tempopb.StreamingQuerier_SearchCl
 }
 
 // processServices
-func processServices(ctx context.Context, stream tempopb.StreamingQuerier_SearchClient) ([]string, error) {
+func processServices(ctx context.Context, stream querypb.StreamingQuerier_SearchClient) ([]string, error) {
 	zl := getLoggerFromContextGRPCTempo(ctx)
 	services := []string{}
 

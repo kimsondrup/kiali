@@ -14,20 +14,20 @@ import (
 	"google.golang.org/grpc/test/bufconn"
 
 	"github.com/kiali/kiali/log"
-	"github.com/kiali/kiali/tracing/tempo/tempopb"
+	"github.com/kiali/kiali/tracing/tempo/querypb"
 )
 
 // scriptedQuerier is a StreamingQuerier that sends the messages it was given, in order, and then
 // ends the stream or fails it. That is all a test needs to drive the client over a stream of
 // several messages, over an empty one, and over one that stops partway.
 type scriptedQuerier struct {
-	tempopb.UnimplementedStreamingQuerierServer
+	querypb.UnimplementedStreamingQuerierServer
 
 	failWith error
-	messages []*tempopb.SearchResponse
+	messages []*querypb.SearchResponse
 }
 
-func (s *scriptedQuerier) Search(req *tempopb.SearchRequest, srv tempopb.StreamingQuerier_SearchServer) error {
+func (s *scriptedQuerier) Search(req *querypb.SearchRequest, srv querypb.StreamingQuerier_SearchServer) error {
 	for _, message := range s.messages {
 		if err := srv.Send(message); err != nil {
 			return err
@@ -36,9 +36,9 @@ func (s *scriptedQuerier) Search(req *tempopb.SearchRequest, srv tempopb.Streami
 	return s.failWith
 }
 
-func dialer(querier tempopb.StreamingQuerierServer) func(context.Context, string) (net.Conn, error) {
+func dialer(querier querypb.StreamingQuerierServer) func(context.Context, string) (net.Conn, error) {
 	return dialerTo(func(server *grpc.Server) {
-		tempopb.RegisterStreamingQuerierServer(server, querier)
+		querypb.RegisterStreamingQuerierServer(server, querier)
 	})
 }
 
@@ -78,29 +78,29 @@ func clientOver(t *testing.T, d func(context.Context, string) (net.Conn, error))
 
 // searchStream opens a real gRPC stream against querier, so the client code under test reads the
 // messages the way it reads Tempo's.
-func searchStream(t *testing.T, querier tempopb.StreamingQuerierServer) tempopb.StreamingQuerier_SearchClient {
+func searchStream(t *testing.T, querier querypb.StreamingQuerierServer) querypb.StreamingQuerier_SearchClient {
 	t.Helper()
 
-	stream, err := clientOver(t, dialer(querier)).StreamingClient.Search(context.Background(), &tempopb.SearchRequest{})
+	stream, err := clientOver(t, dialer(querier)).StreamingClient.Search(context.Background(), &querypb.SearchRequest{})
 	require.NoError(t, err)
 	return stream
 }
 
 // searchResponse builds one message of a search stream. Each trace is given the spans named, so a
 // later record of the same trace can be told from an earlier one by its span count.
-func searchResponse(traces ...*tempopb.TraceSearchMetadata) *tempopb.SearchResponse {
-	return &tempopb.SearchResponse{Traces: traces, Metrics: &tempopb.SearchMetrics{}}
+func searchResponse(traces ...*querypb.TraceSearchMetadata) *querypb.SearchResponse {
+	return &querypb.SearchResponse{Traces: traces, Metrics: &querypb.SearchMetrics{}}
 }
 
-func searchTrace(traceID string, spanIDs ...string) *tempopb.TraceSearchMetadata {
-	spans := make([]*tempopb.Span, 0, len(spanIDs))
+func searchTrace(traceID string, spanIDs ...string) *querypb.TraceSearchMetadata {
+	spans := make([]*querypb.Span, 0, len(spanIDs))
 	for _, spanID := range spanIDs {
-		spans = append(spans, &tempopb.Span{SpanID: spanID, StartTimeUnixNano: 1700000000000000000, DurationNanos: 1000})
+		spans = append(spans, &querypb.Span{SpanID: spanID, StartTimeUnixNano: 1700000000000000000, DurationNanos: 1000})
 	}
-	return &tempopb.TraceSearchMetadata{
+	return &querypb.TraceSearchMetadata{
 		TraceID:       traceID,
 		RootTraceName: "reviews.default",
-		SpanSet:       &tempopb.SpanSet{Spans: spans, Matched: uint32(len(spans))},
+		SpanSet:       &querypb.SpanSet{Spans: spans, Matched: uint32(len(spans))},
 	}
 }
 
@@ -115,7 +115,7 @@ func TestGetServicesJudgesTheBackendOnWhatItReceives(t *testing.T) {
 		expectedOk bool
 	}{
 		"a backend that answers with traces": {
-			dial: dialer(&scriptedQuerier{messages: []*tempopb.SearchResponse{
+			dial: dialer(&scriptedQuerier{messages: []*querypb.SearchResponse{
 				searchResponse(searchTrace("02e299711ce47710289dc6640727404f", "49cd77d1f9dcd936")),
 			}}),
 			expectedOk: true,
@@ -153,7 +153,7 @@ func TestProcessStreamReportsAnUpdatedTraceOnce(t *testing.T) {
 	second := searchTrace("02e299711ce47710289dc6640727404f", "49cd77d1f9dcd936", "2e6ca056f5fc6fdc")
 	other := searchTrace("1c6e4bf1d1c0ac3d91f9b2e5a0d7c418", "aa11bb22cc33dd44")
 
-	stream := searchStream(t, &scriptedQuerier{messages: []*tempopb.SearchResponse{
+	stream := searchStream(t, &scriptedQuerier{messages: []*querypb.SearchResponse{
 		searchResponse(first),
 		searchResponse(second, other),
 	}})
@@ -174,7 +174,7 @@ func TestProcessStreamReportsAnUpdatedTraceOnce(t *testing.T) {
 // others do not. Keeping the latest version of each trace ID accumulates these the same way
 // appending did, so collapsing a repeated trace costs nothing here.
 func TestProcessStreamAccumulatesDisjointMessages(t *testing.T) {
-	stream := searchStream(t, &scriptedQuerier{messages: []*tempopb.SearchResponse{
+	stream := searchStream(t, &scriptedQuerier{messages: []*querypb.SearchResponse{
 		searchResponse(searchTrace("02e299711ce47710289dc6640727404f", "49cd77d1f9dcd936")),
 		searchResponse(searchTrace("1c6e4bf1d1c0ac3d91f9b2e5a0d7c418", "aa11bb22cc33dd44")),
 		searchResponse(searchTrace("3f7a90b4c5d6e7f801928374655aa0bb", "bb22cc33dd44ee55")),
@@ -192,7 +192,7 @@ func TestProcessStreamAccumulatesDisjointMessages(t *testing.T) {
 // ID: the same trace can arrive spelled two ways across two messages, and the two spellings are
 // one trace. The padded ID is what the rest of Kiali compares, so it is what counts here.
 func TestProcessStreamCountsAnUnpaddedTraceOnce(t *testing.T) {
-	stream := searchStream(t, &scriptedQuerier{messages: []*tempopb.SearchResponse{
+	stream := searchStream(t, &scriptedQuerier{messages: []*querypb.SearchResponse{
 		searchResponse(searchTrace("2e299711ce47710289dc6640727404f", "49cd77d1f9dcd936")),
 		searchResponse(searchTrace("02e299711ce47710289dc6640727404f", "49cd77d1f9dcd936", "2e6ca056f5fc6fdc")),
 	}})
@@ -221,7 +221,7 @@ func TestProcessStreamEndsOnEOF(t *testing.T) {
 // nil error, which would read as a complete search that happened to match little.
 func TestProcessStreamReportsAStreamError(t *testing.T) {
 	stream := searchStream(t, &scriptedQuerier{
-		messages: []*tempopb.SearchResponse{searchResponse(searchTrace("02e299711ce47710289dc6640727404f", "49cd77d1f9dcd936"))},
+		messages: []*querypb.SearchResponse{searchResponse(searchTrace("02e299711ce47710289dc6640727404f", "49cd77d1f9dcd936"))},
 		failWith: status.Error(codes.Internal, "block scheduler unavailable"),
 	})
 
