@@ -27,7 +27,6 @@ func ConvertId(id string) jsonModel.TraceID {
 	return jsonModel.TraceID(id)
 }
 
-// convertSpanId
 func convertSpanId(id string) jsonModel.SpanID {
 	return jsonModel.SpanID(id)
 }

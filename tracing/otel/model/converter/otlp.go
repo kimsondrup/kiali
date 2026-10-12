@@ -364,6 +364,5 @@ func durationMicros(span *tracepb.Span, spanID jsonModel.SpanID) uint64 {
 		log.Warningf("Span [%s] end time [%d] is before its start time [%d], reporting a zero duration", spanID, end, start)
 		return 0
 	}
-	// nano to micro
 	return (end - start) / 1000
 }
