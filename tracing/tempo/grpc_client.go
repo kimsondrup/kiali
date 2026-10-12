@@ -113,8 +113,18 @@ func (jc TempoGRPCClient) GetServices(ctx context.Context) (bool, error) {
 	defer cancel()
 
 	sr := &tempopb.SearchRequest{}
-	_, err := jc.StreamingClient.Search(ctx, sr)
-	return err == nil, err
+	stream, err := jc.StreamingClient.Search(ctx, sr)
+	if err != nil {
+		return false, err
+	}
+
+	// Opening the stream proves only that something is listening: gRPC resolves the method name
+	// when the first message travels, so a server that does not implement the streaming querier
+	// reports that on the first receive. An immediate io.EOF is a healthy, empty answer.
+	if _, err := stream.Recv(); err != nil && err != io.EOF {
+		return false, fmt.Errorf("[gRPC Tempo] Tracing gRPC client, search unavailable: %v", err)
+	}
+	return true, nil
 }
 
 // GetServices Test an empty search to check if the service is available

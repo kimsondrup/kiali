@@ -37,6 +37,19 @@ func (f *fakeSearchStream) Recv() (*tempopb.SearchResponse, error) {
 	return f.responses[i], nil
 }
 
+// fakeStreamingQuerier answers every search with the stream it was built with, or with searchErr.
+type fakeStreamingQuerier struct {
+	stream    tempopb.StreamingQuerier_SearchClient
+	searchErr error
+}
+
+func (f *fakeStreamingQuerier) Search(ctx context.Context, in *tempopb.SearchRequest, opts ...grpc.CallOption) (tempopb.StreamingQuerier_SearchClient, error) {
+	if f.searchErr != nil {
+		return nil, f.searchErr
+	}
+	return f.stream, nil
+}
+
 // searchResponse builds one stream message out of the traces it is given.
 func searchResponse(traces ...*tempopb.TraceSearchMetadata) *tempopb.SearchResponse {
 	return &tempopb.SearchResponse{Traces: traces}
@@ -114,4 +127,43 @@ func TestProcessServicesReportsATimeout(t *testing.T) {
 	_, err := processServices(context.Background(), stream)
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "timed out")
+}
+
+// TestGetServicesReceivesBeforeReportingHealthy covers the tracing health check against a gRPC
+// backend that listens on the configured port but does not implement Tempo's streaming querier.
+// Opening a stream succeeds against any gRPC server, because the method name is only resolved once
+// a message travels, so the check has to receive something before it can call the backend healthy.
+// An empty stream, ended straight away with io.EOF, is a healthy answer.
+func TestGetServicesReceivesBeforeReportingHealthy(t *testing.T) {
+	cases := map[string]struct {
+		stream     *fakeSearchStream
+		expectedOk bool
+	}{
+		"a backend that answers with traces": {
+			stream:     &fakeSearchStream{responses: []*tempopb.SearchResponse{searchResponse(searchedTrace("aaaa", 1))}},
+			expectedOk: true,
+		},
+		"a backend that answers with nothing": {
+			stream:     &fakeSearchStream{},
+			expectedOk: true,
+		},
+		"a backend that does not implement the search service": {
+			stream:     &fakeSearchStream{err: status.Error(codes.Unimplemented, "unknown service tempopb.StreamingQuerier")},
+			expectedOk: false,
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			client := TempoGRPCClient{StreamingClient: &fakeStreamingQuerier{stream: tc.stream}}
+
+			ok, err := client.GetServices(context.Background())
+			assert.Equal(t, tc.expectedOk, ok)
+			if tc.expectedOk {
+				assert.NoError(t, err)
+			} else {
+				require.Error(t, err, "an unhealthy answer has to carry its reason")
+			}
+		})
+	}
 }
