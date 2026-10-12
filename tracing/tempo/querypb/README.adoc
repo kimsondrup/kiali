@@ -1,0 +1,13 @@
+=== querypb
+
+Kiali's trimmed copy of Grafana Tempo's query IDL, generated with `protoc-gen-go`.
+
+Upstream source: https://github.com/grafana/tempo/blob/main/pkg/tempopb/tempo.proto[pkg/tempopb/tempo.proto],
+which Tempo's link:https://github.com/grafana/tempo/blob/main/LICENSING.md[LICENSING.md]
+places under Apache-2.0 while the project as a whole is AGPL-3.0. `LICENSE_APACHE2`
+is that licence.
+
+Field numbers are verified against Tempo 3.1.0, and the Tempo API docs describe the
+same messages for every 2.x release Kiali supports.
+
+`hack/gen-tempo-protos.sh` regenerates `tempo.pb.go` and `tempo_grpc.pb.go`.

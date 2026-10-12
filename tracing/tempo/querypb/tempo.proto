@@ -1,0 +1,101 @@
+syntax = "proto3";
+
+// A trimmed copy of Grafana Tempo's query IDL, pkg/tempopb/tempo.proto: the
+// streaming search RPC Kiali calls, its request, and the search answer that
+// both the gRPC and the HTTP transport return. Tempo's write path, its block
+// and tag RPCs, and the trace detail are left out.
+//
+// The proto package stays tempopb because it names the gRPC method Kiali
+// invokes, /tempopb.StreamingQuerier/Search.
+//
+// Span attributes are the published OpenTelemetry types rather than the copy
+// of the OTLP model that upstream carries under its own package, so no OTLP
+// code is generated here. The two share field numbers, so the wire bytes are
+// the same ones.
+//
+// Field numbers match upstream, and the numbers Kiali does not use are
+// reserved rather than dropped, so wire compatibility survives a
+// regeneration.
+package tempopb;
+
+import "opentelemetry/proto/common/v1/common.proto";
+
+option go_package = "github.com/kiali/kiali/tracing/tempo/querypb;querypb";
+
+service StreamingQuerier {
+  // Search answers with cumulative snapshots: each message repeats every
+  // trace found so far, so a reader keeps the latest rather than appending.
+  rpc Search(SearchRequest) returns (stream SearchResponse);
+}
+
+// SearchRequest takes no block parameters and implies a "recent traces"
+// search. The HTTP transport sends the same fields as query parameters.
+message SearchRequest {
+  // Tags is a case insensitive partial match, and an alternative to Query:
+  // Kiali folds its tags into the TraceQL expression instead.
+  map<string, string> Tags = 1;
+  uint32 MinDurationMs = 2;
+  uint32 Limit = 4;
+  uint32 start = 5;
+  uint32 end = 6;
+  // TraceQL query
+  string Query = 8;
+  // SpansPerSpanSet bounds the spans returned per matching trace. Tempo
+  // defaults it to 3, which loses spans Kiali draws.
+  uint32 SpansPerSpanSet = 9;
+
+  // 3 is MaxDurationMs, which no Kiali caller supplies. 10 is the deprecated
+  // RF1After, whose gogo stdtime mapping has no equivalent here, and 11 is
+  // skipASTTransformations, a query-frontend internal.
+  reserved 3, 10, 11;
+}
+
+message SearchResponse {
+  repeated TraceSearchMetadata traces = 1;
+  SearchMetrics metrics = 2;
+}
+
+message TraceSearchMetadata {
+  // traceID is hex, and Tempo does not zero-pad it: about one in sixteen
+  // arrives shorter than 32 characters.
+  string traceID = 1;
+  string rootServiceName = 2;
+  string rootTraceName = 3;
+  uint64 startTimeUnixNano = 4;
+  uint32 durationMs = 5;
+  SpanSet spanSet = 6; // deprecated. use SpanSets field below
+  repeated SpanSet spanSets = 7;
+  map<string, ServiceStats> serviceStats = 8;
+}
+
+message ServiceStats {
+  uint32 spanCount = 1;
+  uint32 errorCount = 2;
+}
+
+message SpanSet {
+  repeated Span spans = 1;
+  uint32 matched = 2;
+  repeated opentelemetry.proto.common.v1.KeyValue attributes = 3;
+}
+
+message Span {
+  string spanID = 1;
+  string name = 2;
+  uint64 startTimeUnixNano = 3;
+  uint64 durationNanos = 4;
+  repeated opentelemetry.proto.common.v1.KeyValue attributes = 5;
+}
+
+message SearchMetrics {
+  uint32 inspectedTraces = 1;
+  uint64 inspectedBytes = 2;
+  uint32 totalBlocks = 3;
+  uint32 completedJobs = 4;
+  uint32 totalJobs = 5;
+  uint64 totalBlockBytes = 6;
+
+  // 7 to 10 are inspectedSpans, backendReads, backendBytes and
+  // additionalMetrics, which Kiali does not report.
+  reserved 7, 8, 9, 10;
+}
