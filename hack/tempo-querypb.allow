@@ -6,10 +6,14 @@
 # a name that has gone makes the generator stop. The numbers are upstream's, and
 # the generator asserts each name still carries the same one in every release in
 # TEMPO_VERSIONS.
+#
+# This is the whole of Kiali's Tempo surface. A field read by nothing is not
+# declared, however harmless it looks: in six years the only numbers Tempo ever
+# reused were three of SearchMetrics', which Kiali never read and no longer
+# declares. Adding one back is a line here and a re-run.
 
 StreamingQuerier/Search
 
-SearchRequest.Tags
 SearchRequest.MinDurationMs
 SearchRequest.Limit
 SearchRequest.start
@@ -18,13 +22,10 @@ SearchRequest.Query
 SearchRequest.SpansPerSpanSet
 
 SearchResponse.traces
-SearchResponse.metrics
 
 TraceSearchMetadata.traceID
 TraceSearchMetadata.rootServiceName
 TraceSearchMetadata.rootTraceName
-TraceSearchMetadata.startTimeUnixNano
-TraceSearchMetadata.durationMs
 TraceSearchMetadata.spanSet
 TraceSearchMetadata.spanSets
 
@@ -37,10 +38,3 @@ Span.name
 Span.startTimeUnixNano
 Span.durationNanos
 Span.attributes
-
-SearchMetrics.inspectedTraces
-SearchMetrics.inspectedBytes
-SearchMetrics.totalBlocks
-SearchMetrics.completedJobs
-SearchMetrics.totalJobs
-SearchMetrics.totalBlockBytes

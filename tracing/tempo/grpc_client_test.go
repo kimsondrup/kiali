@@ -100,7 +100,7 @@ func searchStream(t *testing.T, querier querypb.StreamingQuerierServer) querypb.
 // searchResponse builds one message of a search stream. Each trace is given the spans named, so a
 // later record of the same trace can be told from an earlier one by its span count.
 func searchResponse(traces ...*querypb.TraceSearchMetadata) *querypb.SearchResponse {
-	return &querypb.SearchResponse{Traces: traces, Metrics: &querypb.SearchMetrics{}}
+	return &querypb.SearchResponse{Traces: traces}
 }
 
 func searchTrace(traceID string, spanIDs ...string) *querypb.TraceSearchMetadata {

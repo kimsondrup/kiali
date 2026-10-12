@@ -24,8 +24,7 @@ service StreamingQuerier {
 }
 
 message SearchRequest {
-  // case insensitive partial match
-  map<string, string> Tags = 1;
+  reserved 1; // Tags
   uint32 MinDurationMs = 2;
   reserved 3; // MaxDurationMs
   uint32 Limit = 4;
@@ -40,15 +39,15 @@ message SearchRequest {
 
 message SearchResponse {
   repeated TraceSearchMetadata traces = 1;
-  SearchMetrics metrics = 2;
+  reserved 2; // metrics
 }
 
 message TraceSearchMetadata {
   string traceID = 1;
   string rootServiceName = 2;
   string rootTraceName = 3;
-  uint64 startTimeUnixNano = 4;
-  uint32 durationMs = 5;
+  reserved 4; // startTimeUnixNano
+  reserved 5; // durationMs
   SpanSet spanSet = 6; // deprecated. use SpanSets field below
   repeated SpanSet spanSets = 7;
   reserved 8; // serviceStats
@@ -66,17 +65,4 @@ message Span {
   uint64 startTimeUnixNano = 3;
   uint64 durationNanos = 4;
   repeated opentelemetry.proto.common.v1.KeyValue attributes = 5;
-}
-
-message SearchMetrics {
-  uint32 inspectedTraces = 1;
-  uint64 inspectedBytes = 2;
-  uint32 totalBlocks = 3;
-  uint32 completedJobs = 4;
-  uint32 totalJobs = 5;
-  uint64 totalBlockBytes = 6;
-  reserved 7; // inspectedSpans
-  reserved 8; // backendReads
-  reserved 9; // backendBytes
-  reserved 10; // additionalMetrics
 }

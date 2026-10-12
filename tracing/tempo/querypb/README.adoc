@@ -44,6 +44,33 @@ and `protoc` then rejects anyone declaring something else at one of those number
   or the rewritten OTLP model. Upstream retyping a field Kiali reads to something
   Tempo-local stops the generator instead of dragging another upstream model in.
 
+==== What is left out, and why that is the point
+
+The allow-list is the whole of Kiali's Tempo surface. A field read by nothing is not
+declared, however harmless it looks, because declaring it is the only way this
+repository can be wrong about it.
+
+`SearchMetrics` is the case that settles the rule. Kiali reads no field of it, and it
+is the one message in Tempo's history whose numbers were reused with a new meaning:
+3, 4 and 5 were `inspectedBlocks`, `skippedBlocks` and `skippedTraces` before v2.2.0
+and are `totalBlocks`, `completedJobs` and `totalJobs` after it, at the same wire type.
+A client holding the old names decodes the new answer silently and wrongly. Kiali was
+never exposed to it - v2.2.0 both reused those numbers and introduced
+`StreamingQuerier`, so no Tempo exists that Kiali's gRPC client can reach and that
+still means the old things - but keeping the message needed an exception to the rule
+and dropping it needed nothing.
+
+Also out: `SearchResponse.metrics`, as the consequence; `SearchRequest.Tags`, a map
+never set because both transports fold query tags into the TraceQL expression instead;
+and `TraceSearchMetadata.startTimeUnixNano` and `durationMs`, read by nothing.
+Only `Span.startTimeUnixNano` is read.
+
+Dropping a field changes nothing on either transport. Binary proto3 drops an
+undeclared field itself, and the HTTP decode passes `DiscardUnknown`, so what arrives
+at a number the IDL reserves is dropped exactly as it was before. The envelope check in
+`unmarshal` reads the raw JSON key map rather than the decoded message, so it still
+accepts a `metrics` key.
+
 ==== Reading the result
 
 Two things the IDL cannot say, which the code that reads it relies on:
@@ -52,9 +79,6 @@ Two things the IDL cannot say, which the code that reads it relies on:
   arrives shorter than 32 characters. Callers pad.
 * `SpansPerSpanSet` bounds the spans returned per matching trace, and Tempo defaults it
   to 3, which loses spans Kiali draws.
-
-`SearchRequest.Tags` is never set: both transports fold query tags into the TraceQL
-expression instead.
 
 ==== Licence
 

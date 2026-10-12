@@ -37,13 +37,11 @@ const (
 )
 
 type SearchRequest struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// case insensitive partial match
-	Tags          map[string]string `protobuf:"bytes,1,rep,name=Tags,proto3" json:"Tags,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	MinDurationMs uint32            `protobuf:"varint,2,opt,name=MinDurationMs,proto3" json:"MinDurationMs,omitempty"`
-	Limit         uint32            `protobuf:"varint,4,opt,name=Limit,proto3" json:"Limit,omitempty"`
-	Start         uint32            `protobuf:"varint,5,opt,name=start,proto3" json:"start,omitempty"`
-	End           uint32            `protobuf:"varint,6,opt,name=end,proto3" json:"end,omitempty"`
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	MinDurationMs uint32                 `protobuf:"varint,2,opt,name=MinDurationMs,proto3" json:"MinDurationMs,omitempty"`
+	Limit         uint32                 `protobuf:"varint,4,opt,name=Limit,proto3" json:"Limit,omitempty"`
+	Start         uint32                 `protobuf:"varint,5,opt,name=start,proto3" json:"start,omitempty"`
+	End           uint32                 `protobuf:"varint,6,opt,name=end,proto3" json:"end,omitempty"`
 	// TraceQL query
 	Query           string `protobuf:"bytes,8,opt,name=Query,proto3" json:"Query,omitempty"`
 	SpansPerSpanSet uint32 `protobuf:"varint,9,opt,name=SpansPerSpanSet,proto3" json:"SpansPerSpanSet,omitempty"`
@@ -79,13 +77,6 @@ func (x *SearchRequest) ProtoReflect() protoreflect.Message {
 // Deprecated: Use SearchRequest.ProtoReflect.Descriptor instead.
 func (*SearchRequest) Descriptor() ([]byte, []int) {
 	return file_tempo_proto_rawDescGZIP(), []int{0}
-}
-
-func (x *SearchRequest) GetTags() map[string]string {
-	if x != nil {
-		return x.Tags
-	}
-	return nil
 }
 
 func (x *SearchRequest) GetMinDurationMs() uint32 {
@@ -133,7 +124,6 @@ func (x *SearchRequest) GetSpansPerSpanSet() uint32 {
 type SearchResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Traces        []*TraceSearchMetadata `protobuf:"bytes,1,rep,name=traces,proto3" json:"traces,omitempty"`
-	Metrics       *SearchMetrics         `protobuf:"bytes,2,opt,name=metrics,proto3" json:"metrics,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -175,24 +165,15 @@ func (x *SearchResponse) GetTraces() []*TraceSearchMetadata {
 	return nil
 }
 
-func (x *SearchResponse) GetMetrics() *SearchMetrics {
-	if x != nil {
-		return x.Metrics
-	}
-	return nil
-}
-
 type TraceSearchMetadata struct {
-	state             protoimpl.MessageState `protogen:"open.v1"`
-	TraceID           string                 `protobuf:"bytes,1,opt,name=traceID,proto3" json:"traceID,omitempty"`
-	RootServiceName   string                 `protobuf:"bytes,2,opt,name=rootServiceName,proto3" json:"rootServiceName,omitempty"`
-	RootTraceName     string                 `protobuf:"bytes,3,opt,name=rootTraceName,proto3" json:"rootTraceName,omitempty"`
-	StartTimeUnixNano uint64                 `protobuf:"varint,4,opt,name=startTimeUnixNano,proto3" json:"startTimeUnixNano,omitempty"`
-	DurationMs        uint32                 `protobuf:"varint,5,opt,name=durationMs,proto3" json:"durationMs,omitempty"`
-	SpanSet           *SpanSet               `protobuf:"bytes,6,opt,name=spanSet,proto3" json:"spanSet,omitempty"` // deprecated. use SpanSets field below
-	SpanSets          []*SpanSet             `protobuf:"bytes,7,rep,name=spanSets,proto3" json:"spanSets,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	TraceID         string                 `protobuf:"bytes,1,opt,name=traceID,proto3" json:"traceID,omitempty"`
+	RootServiceName string                 `protobuf:"bytes,2,opt,name=rootServiceName,proto3" json:"rootServiceName,omitempty"`
+	RootTraceName   string                 `protobuf:"bytes,3,opt,name=rootTraceName,proto3" json:"rootTraceName,omitempty"`
+	SpanSet         *SpanSet               `protobuf:"bytes,6,opt,name=spanSet,proto3" json:"spanSet,omitempty"` // deprecated. use SpanSets field below
+	SpanSets        []*SpanSet             `protobuf:"bytes,7,rep,name=spanSets,proto3" json:"spanSets,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *TraceSearchMetadata) Reset() {
@@ -244,20 +225,6 @@ func (x *TraceSearchMetadata) GetRootTraceName() string {
 		return x.RootTraceName
 	}
 	return ""
-}
-
-func (x *TraceSearchMetadata) GetStartTimeUnixNano() uint64 {
-	if x != nil {
-		return x.StartTimeUnixNano
-	}
-	return 0
-}
-
-func (x *TraceSearchMetadata) GetDurationMs() uint32 {
-	if x != nil {
-		return x.DurationMs
-	}
-	return 0
 }
 
 func (x *TraceSearchMetadata) GetSpanSet() *SpanSet {
@@ -410,120 +377,27 @@ func (x *Span) GetAttributes() []*v1.KeyValue {
 	return nil
 }
 
-type SearchMetrics struct {
-	state           protoimpl.MessageState `protogen:"open.v1"`
-	InspectedTraces uint32                 `protobuf:"varint,1,opt,name=inspectedTraces,proto3" json:"inspectedTraces,omitempty"`
-	InspectedBytes  uint64                 `protobuf:"varint,2,opt,name=inspectedBytes,proto3" json:"inspectedBytes,omitempty"`
-	TotalBlocks     uint32                 `protobuf:"varint,3,opt,name=totalBlocks,proto3" json:"totalBlocks,omitempty"`
-	CompletedJobs   uint32                 `protobuf:"varint,4,opt,name=completedJobs,proto3" json:"completedJobs,omitempty"`
-	TotalJobs       uint32                 `protobuf:"varint,5,opt,name=totalJobs,proto3" json:"totalJobs,omitempty"`
-	TotalBlockBytes uint64                 `protobuf:"varint,6,opt,name=totalBlockBytes,proto3" json:"totalBlockBytes,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
-}
-
-func (x *SearchMetrics) Reset() {
-	*x = SearchMetrics{}
-	mi := &file_tempo_proto_msgTypes[5]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *SearchMetrics) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*SearchMetrics) ProtoMessage() {}
-
-func (x *SearchMetrics) ProtoReflect() protoreflect.Message {
-	mi := &file_tempo_proto_msgTypes[5]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use SearchMetrics.ProtoReflect.Descriptor instead.
-func (*SearchMetrics) Descriptor() ([]byte, []int) {
-	return file_tempo_proto_rawDescGZIP(), []int{5}
-}
-
-func (x *SearchMetrics) GetInspectedTraces() uint32 {
-	if x != nil {
-		return x.InspectedTraces
-	}
-	return 0
-}
-
-func (x *SearchMetrics) GetInspectedBytes() uint64 {
-	if x != nil {
-		return x.InspectedBytes
-	}
-	return 0
-}
-
-func (x *SearchMetrics) GetTotalBlocks() uint32 {
-	if x != nil {
-		return x.TotalBlocks
-	}
-	return 0
-}
-
-func (x *SearchMetrics) GetCompletedJobs() uint32 {
-	if x != nil {
-		return x.CompletedJobs
-	}
-	return 0
-}
-
-func (x *SearchMetrics) GetTotalJobs() uint32 {
-	if x != nil {
-		return x.TotalJobs
-	}
-	return 0
-}
-
-func (x *SearchMetrics) GetTotalBlockBytes() uint64 {
-	if x != nil {
-		return x.TotalBlockBytes
-	}
-	return 0
-}
-
 var File_tempo_proto protoreflect.FileDescriptor
 
 const file_tempo_proto_rawDesc = "" +
 	"\n" +
-	"\vtempo.proto\x12\atempopb\x1a*opentelemetry/proto/common/v1/common.proto\"\xb4\x02\n" +
-	"\rSearchRequest\x124\n" +
-	"\x04Tags\x18\x01 \x03(\v2 .tempopb.SearchRequest.TagsEntryR\x04Tags\x12$\n" +
+	"\vtempo.proto\x12\atempopb\x1a*opentelemetry/proto/common/v1/common.proto\"\xcb\x01\n" +
+	"\rSearchRequest\x12$\n" +
 	"\rMinDurationMs\x18\x02 \x01(\rR\rMinDurationMs\x12\x14\n" +
 	"\x05Limit\x18\x04 \x01(\rR\x05Limit\x12\x14\n" +
 	"\x05start\x18\x05 \x01(\rR\x05start\x12\x10\n" +
 	"\x03end\x18\x06 \x01(\rR\x03end\x12\x14\n" +
 	"\x05Query\x18\b \x01(\tR\x05Query\x12(\n" +
-	"\x0fSpansPerSpanSet\x18\t \x01(\rR\x0fSpansPerSpanSet\x1a7\n" +
-	"\tTagsEntry\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\x03\x10\x04J\x04\b\n" +
-	"\x10\vJ\x04\b\v\x10\f\"x\n" +
+	"\x0fSpansPerSpanSet\x18\t \x01(\rR\x0fSpansPerSpanSetJ\x04\b\x01\x10\x02J\x04\b\x03\x10\x04J\x04\b\n" +
+	"\x10\vJ\x04\b\v\x10\f\"L\n" +
 	"\x0eSearchResponse\x124\n" +
-	"\x06traces\x18\x01 \x03(\v2\x1c.tempopb.TraceSearchMetadataR\x06traces\x120\n" +
-	"\ametrics\x18\x02 \x01(\v2\x16.tempopb.SearchMetricsR\ametrics\"\xad\x02\n" +
+	"\x06traces\x18\x01 \x03(\v2\x1c.tempopb.TraceSearchMetadataR\x06tracesJ\x04\b\x02\x10\x03\"\xeb\x01\n" +
 	"\x13TraceSearchMetadata\x12\x18\n" +
 	"\atraceID\x18\x01 \x01(\tR\atraceID\x12(\n" +
 	"\x0frootServiceName\x18\x02 \x01(\tR\x0frootServiceName\x12$\n" +
-	"\rrootTraceName\x18\x03 \x01(\tR\rrootTraceName\x12,\n" +
-	"\x11startTimeUnixNano\x18\x04 \x01(\x04R\x11startTimeUnixNano\x12\x1e\n" +
-	"\n" +
-	"durationMs\x18\x05 \x01(\rR\n" +
-	"durationMs\x12*\n" +
+	"\rrootTraceName\x18\x03 \x01(\tR\rrootTraceName\x12*\n" +
 	"\aspanSet\x18\x06 \x01(\v2\x10.tempopb.SpanSetR\aspanSet\x12,\n" +
-	"\bspanSets\x18\a \x03(\v2\x10.tempopb.SpanSetR\bspanSetsJ\x04\b\b\x10\t\"\x91\x01\n" +
+	"\bspanSets\x18\a \x03(\v2\x10.tempopb.SpanSetR\bspanSetsJ\x04\b\x04\x10\x05J\x04\b\x05\x10\x06J\x04\b\b\x10\t\"\x91\x01\n" +
 	"\aSpanSet\x12#\n" +
 	"\x05spans\x18\x01 \x03(\v2\r.tempopb.SpanR\x05spans\x12\x18\n" +
 	"\amatched\x18\x02 \x01(\rR\amatched\x12G\n" +
@@ -537,16 +411,7 @@ const file_tempo_proto_rawDesc = "" +
 	"\rdurationNanos\x18\x04 \x01(\x04R\rdurationNanos\x12G\n" +
 	"\n" +
 	"attributes\x18\x05 \x03(\v2'.opentelemetry.proto.common.v1.KeyValueR\n" +
-	"attributes\"\x89\x02\n" +
-	"\rSearchMetrics\x12(\n" +
-	"\x0finspectedTraces\x18\x01 \x01(\rR\x0finspectedTraces\x12&\n" +
-	"\x0einspectedBytes\x18\x02 \x01(\x04R\x0einspectedBytes\x12 \n" +
-	"\vtotalBlocks\x18\x03 \x01(\rR\vtotalBlocks\x12$\n" +
-	"\rcompletedJobs\x18\x04 \x01(\rR\rcompletedJobs\x12\x1c\n" +
-	"\ttotalJobs\x18\x05 \x01(\rR\ttotalJobs\x12(\n" +
-	"\x0ftotalBlockBytes\x18\x06 \x01(\x04R\x0ftotalBlockBytesJ\x04\b\a\x10\bJ\x04\b\b\x10\tJ\x04\b\t\x10\n" +
-	"J\x04\b\n" +
-	"\x10\v2O\n" +
+	"attributes2O\n" +
 	"\x10StreamingQuerier\x12;\n" +
 	"\x06Search\x12\x16.tempopb.SearchRequest\x1a\x17.tempopb.SearchResponse0\x01B6Z4github.com/kiali/kiali/tracing/tempo/querypb;querypbb\x06proto3"
 
@@ -562,33 +427,29 @@ func file_tempo_proto_rawDescGZIP() []byte {
 	return file_tempo_proto_rawDescData
 }
 
-var file_tempo_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
+var file_tempo_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
 var file_tempo_proto_goTypes = []any{
 	(*SearchRequest)(nil),       // 0: tempopb.SearchRequest
 	(*SearchResponse)(nil),      // 1: tempopb.SearchResponse
 	(*TraceSearchMetadata)(nil), // 2: tempopb.TraceSearchMetadata
 	(*SpanSet)(nil),             // 3: tempopb.SpanSet
 	(*Span)(nil),                // 4: tempopb.Span
-	(*SearchMetrics)(nil),       // 5: tempopb.SearchMetrics
-	nil,                         // 6: tempopb.SearchRequest.TagsEntry
-	(*v1.KeyValue)(nil),         // 7: opentelemetry.proto.common.v1.KeyValue
+	(*v1.KeyValue)(nil),         // 5: opentelemetry.proto.common.v1.KeyValue
 }
 var file_tempo_proto_depIdxs = []int32{
-	6, // 0: tempopb.SearchRequest.Tags:type_name -> tempopb.SearchRequest.TagsEntry
-	2, // 1: tempopb.SearchResponse.traces:type_name -> tempopb.TraceSearchMetadata
-	5, // 2: tempopb.SearchResponse.metrics:type_name -> tempopb.SearchMetrics
-	3, // 3: tempopb.TraceSearchMetadata.spanSet:type_name -> tempopb.SpanSet
-	3, // 4: tempopb.TraceSearchMetadata.spanSets:type_name -> tempopb.SpanSet
-	4, // 5: tempopb.SpanSet.spans:type_name -> tempopb.Span
-	7, // 6: tempopb.SpanSet.attributes:type_name -> opentelemetry.proto.common.v1.KeyValue
-	7, // 7: tempopb.Span.attributes:type_name -> opentelemetry.proto.common.v1.KeyValue
-	0, // 8: tempopb.StreamingQuerier.Search:input_type -> tempopb.SearchRequest
-	1, // 9: tempopb.StreamingQuerier.Search:output_type -> tempopb.SearchResponse
-	9, // [9:10] is the sub-list for method output_type
-	8, // [8:9] is the sub-list for method input_type
-	8, // [8:8] is the sub-list for extension type_name
-	8, // [8:8] is the sub-list for extension extendee
-	0, // [0:8] is the sub-list for field type_name
+	2, // 0: tempopb.SearchResponse.traces:type_name -> tempopb.TraceSearchMetadata
+	3, // 1: tempopb.TraceSearchMetadata.spanSet:type_name -> tempopb.SpanSet
+	3, // 2: tempopb.TraceSearchMetadata.spanSets:type_name -> tempopb.SpanSet
+	4, // 3: tempopb.SpanSet.spans:type_name -> tempopb.Span
+	5, // 4: tempopb.SpanSet.attributes:type_name -> opentelemetry.proto.common.v1.KeyValue
+	5, // 5: tempopb.Span.attributes:type_name -> opentelemetry.proto.common.v1.KeyValue
+	0, // 6: tempopb.StreamingQuerier.Search:input_type -> tempopb.SearchRequest
+	1, // 7: tempopb.StreamingQuerier.Search:output_type -> tempopb.SearchResponse
+	7, // [7:8] is the sub-list for method output_type
+	6, // [6:7] is the sub-list for method input_type
+	6, // [6:6] is the sub-list for extension type_name
+	6, // [6:6] is the sub-list for extension extendee
+	0, // [0:6] is the sub-list for field type_name
 }
 
 func init() { file_tempo_proto_init() }
@@ -602,7 +463,7 @@ func file_tempo_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_tempo_proto_rawDesc), len(file_tempo_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   7,
+			NumMessages:   5,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

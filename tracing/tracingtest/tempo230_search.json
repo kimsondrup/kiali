@@ -1,0 +1,796 @@
+{
+  "traces": [
+    {
+      "traceID": "dbaf0dc0b41c28514f68e02f3c9f156",
+      "rootServiceName": "waypoint.tp-idl-svgkbx",
+      "rootTraceName": "podinfo.tp-idl-svgkbx.svc.cluster.local:9898/*",
+      "startTimeUnixNano": "1791814734731632000",
+      "durationMs": 1001,
+      "spanSet": {
+        "spans": [
+          {
+            "spanID": "91aa93597f4cbd0b",
+            "name": "podinfo.tp-idl-svgkbx.svc.cluster.local:9898/*",
+            "startTimeUnixNano": "1791814734731632000",
+            "durationNanos": "1001371000",
+            "attributes": [
+              {
+                "key": "istio.source_canonical_service",
+                "value": {
+                  "stringValue": "client"
+                }
+              },
+              {
+                "key": "istio.source_namespace",
+                "value": {
+                  "stringValue": "tp-idl-svgkbx"
+                }
+              },
+              {
+                "key": "istio.destination_namespace",
+                "value": {
+                  "stringValue": "tp-idl-svgkbx"
+                }
+              },
+              {
+                "key": "http.method",
+                "value": {
+                  "stringValue": "GET"
+                }
+              },
+              {
+                "key": "istio.source_instance_name",
+                "value": {
+                  "stringValue": "client-96d57bbcf-b44zx"
+                }
+              },
+              {
+                "key": "status",
+                "value": {
+                  "stringValue": "unset"
+                }
+              },
+              {
+                "key": "service.name",
+                "value": {
+                  "stringValue": "waypoint.tp-idl-svgkbx"
+                }
+              },
+              {
+                "key": "component",
+                "value": {
+                  "stringValue": "proxy"
+                }
+              },
+              {
+                "key": "upstream_cluster",
+                "value": {
+                  "stringValue": "inbound-vip|9898|http|podinfo.tp-idl-svgkbx.svc.cluster.local"
+                }
+              },
+              {
+                "key": "istio.destination_canonical_service",
+                "value": {
+                  "stringValue": "podinfo"
+                }
+              },
+              {
+                "key": "node_id",
+                "value": {
+                  "stringValue": "waypoint~10.244.1.145~waypoint-5f8884c48c-fnxvm.tp-idl-svgkbx~tp-idl-svgkbx.svc.cluster.local"
+                }
+              },
+              {
+                "key": "response_flags",
+                "value": {
+                  "stringValue": "-"
+                }
+              },
+              {
+                "key": "istio.source_workload",
+                "value": {
+                  "stringValue": "client"
+                }
+              },
+              {
+                "key": "istio.destination_workload",
+                "value": {
+                  "stringValue": "podinfo"
+                }
+              },
+              {
+                "key": "istio.destination_instance_name",
+                "value": {
+                  "stringValue": "podinfo-84f8777587-dzhth"
+                }
+              }
+            ]
+          },
+          {
+            "spanID": "e98dbdce4cab01ba",
+            "name": "delayHandler",
+            "startTimeUnixNano": "1791814734732214625",
+            "durationNanos": "1000157369",
+            "attributes": [
+              {
+                "key": "status",
+                "value": {
+                  "stringValue": "unset"
+                }
+              }
+            ]
+          },
+          {
+            "spanID": "1d4e5d837c72a26c",
+            "name": "GET /delay/{wait:[0-9]+}",
+            "startTimeUnixNano": "1791814734732200398",
+            "durationNanos": "1000229577",
+            "attributes": [
+              {
+                "key": "status",
+                "value": {
+                  "stringValue": "unset"
+                }
+              }
+            ]
+          }
+        ],
+        "matched": 3
+      },
+      "spanSets": [
+        {
+          "spans": [
+            {
+              "spanID": "91aa93597f4cbd0b",
+              "name": "podinfo.tp-idl-svgkbx.svc.cluster.local:9898/*",
+              "startTimeUnixNano": "1791814734731632000",
+              "durationNanos": "1001371000",
+              "attributes": [
+                {
+                  "key": "istio.source_canonical_service",
+                  "value": {
+                    "stringValue": "client"
+                  }
+                },
+                {
+                  "key": "istio.source_namespace",
+                  "value": {
+                    "stringValue": "tp-idl-svgkbx"
+                  }
+                },
+                {
+                  "key": "istio.destination_namespace",
+                  "value": {
+                    "stringValue": "tp-idl-svgkbx"
+                  }
+                },
+                {
+                  "key": "http.method",
+                  "value": {
+                    "stringValue": "GET"
+                  }
+                },
+                {
+                  "key": "istio.source_instance_name",
+                  "value": {
+                    "stringValue": "client-96d57bbcf-b44zx"
+                  }
+                },
+                {
+                  "key": "status",
+                  "value": {
+                    "stringValue": "unset"
+                  }
+                },
+                {
+                  "key": "service.name",
+                  "value": {
+                    "stringValue": "waypoint.tp-idl-svgkbx"
+                  }
+                },
+                {
+                  "key": "component",
+                  "value": {
+                    "stringValue": "proxy"
+                  }
+                },
+                {
+                  "key": "upstream_cluster",
+                  "value": {
+                    "stringValue": "inbound-vip|9898|http|podinfo.tp-idl-svgkbx.svc.cluster.local"
+                  }
+                },
+                {
+                  "key": "istio.destination_canonical_service",
+                  "value": {
+                    "stringValue": "podinfo"
+                  }
+                },
+                {
+                  "key": "node_id",
+                  "value": {
+                    "stringValue": "waypoint~10.244.1.145~waypoint-5f8884c48c-fnxvm.tp-idl-svgkbx~tp-idl-svgkbx.svc.cluster.local"
+                  }
+                },
+                {
+                  "key": "response_flags",
+                  "value": {
+                    "stringValue": "-"
+                  }
+                },
+                {
+                  "key": "istio.source_workload",
+                  "value": {
+                    "stringValue": "client"
+                  }
+                },
+                {
+                  "key": "istio.destination_workload",
+                  "value": {
+                    "stringValue": "podinfo"
+                  }
+                },
+                {
+                  "key": "istio.destination_instance_name",
+                  "value": {
+                    "stringValue": "podinfo-84f8777587-dzhth"
+                  }
+                }
+              ]
+            },
+            {
+              "spanID": "e98dbdce4cab01ba",
+              "name": "delayHandler",
+              "startTimeUnixNano": "1791814734732214625",
+              "durationNanos": "1000157369",
+              "attributes": [
+                {
+                  "key": "status",
+                  "value": {
+                    "stringValue": "unset"
+                  }
+                }
+              ]
+            },
+            {
+              "spanID": "1d4e5d837c72a26c",
+              "name": "GET /delay/{wait:[0-9]+}",
+              "startTimeUnixNano": "1791814734732200398",
+              "durationNanos": "1000229577",
+              "attributes": [
+                {
+                  "key": "status",
+                  "value": {
+                    "stringValue": "unset"
+                  }
+                }
+              ]
+            }
+          ],
+          "matched": 3
+        }
+      ]
+    },
+    {
+      "traceID": "1ef2487efdf2b3c410a0996de9e7009b",
+      "rootServiceName": "waypoint.tp-idl-svgkbx",
+      "rootTraceName": "podinfo.tp-idl-svgkbx.svc.cluster.local:9898/*",
+      "startTimeUnixNano": "1791814731547402000",
+      "durationMs": 1,
+      "spanSet": {
+        "spans": [
+          {
+            "spanID": "7c374da66ed472f4",
+            "name": "podinfo.tp-idl-svgkbx.svc.cluster.local:9898/*",
+            "startTimeUnixNano": "1791814731547402000",
+            "durationNanos": "1423000",
+            "attributes": [
+              {
+                "key": "service.name",
+                "value": {
+                  "stringValue": "waypoint.tp-idl-svgkbx"
+                }
+              },
+              {
+                "key": "istio.destination_workload",
+                "value": {
+                  "stringValue": "podinfo"
+                }
+              },
+              {
+                "key": "istio.source_canonical_service",
+                "value": {
+                  "stringValue": "client"
+                }
+              },
+              {
+                "key": "istio.destination_canonical_service",
+                "value": {
+                  "stringValue": "podinfo"
+                }
+              },
+              {
+                "key": "node_id",
+                "value": {
+                  "stringValue": "waypoint~10.244.1.145~waypoint-5f8884c48c-fnxvm.tp-idl-svgkbx~tp-idl-svgkbx.svc.cluster.local"
+                }
+              },
+              {
+                "key": "istio.source_workload",
+                "value": {
+                  "stringValue": "client"
+                }
+              },
+              {
+                "key": "istio.destination_instance_name",
+                "value": {
+                  "stringValue": "podinfo-84f8777587-dzhth"
+                }
+              },
+              {
+                "key": "istio.source_instance_name",
+                "value": {
+                  "stringValue": "client-96d57bbcf-b44zx"
+                }
+              },
+              {
+                "key": "status",
+                "value": {
+                  "stringValue": "unset"
+                }
+              },
+              {
+                "key": "istio.source_namespace",
+                "value": {
+                  "stringValue": "tp-idl-svgkbx"
+                }
+              },
+              {
+                "key": "http.method",
+                "value": {
+                  "stringValue": "GET"
+                }
+              },
+              {
+                "key": "component",
+                "value": {
+                  "stringValue": "proxy"
+                }
+              },
+              {
+                "key": "upstream_cluster",
+                "value": {
+                  "stringValue": "inbound-vip|9898|http|podinfo.tp-idl-svgkbx.svc.cluster.local"
+                }
+              },
+              {
+                "key": "response_flags",
+                "value": {
+                  "stringValue": "-"
+                }
+              },
+              {
+                "key": "istio.destination_namespace",
+                "value": {
+                  "stringValue": "tp-idl-svgkbx"
+                }
+              }
+            ]
+          },
+          {
+            "spanID": "128889183f80ed56",
+            "name": "GET /version",
+            "startTimeUnixNano": "1791814731548164491",
+            "durationNanos": "69542",
+            "attributes": [
+              {
+                "key": "status",
+                "value": {
+                  "stringValue": "unset"
+                }
+              }
+            ]
+          }
+        ],
+        "matched": 2
+      },
+      "spanSets": [
+        {
+          "spans": [
+            {
+              "spanID": "7c374da66ed472f4",
+              "name": "podinfo.tp-idl-svgkbx.svc.cluster.local:9898/*",
+              "startTimeUnixNano": "1791814731547402000",
+              "durationNanos": "1423000",
+              "attributes": [
+                {
+                  "key": "service.name",
+                  "value": {
+                    "stringValue": "waypoint.tp-idl-svgkbx"
+                  }
+                },
+                {
+                  "key": "istio.destination_workload",
+                  "value": {
+                    "stringValue": "podinfo"
+                  }
+                },
+                {
+                  "key": "istio.source_canonical_service",
+                  "value": {
+                    "stringValue": "client"
+                  }
+                },
+                {
+                  "key": "istio.destination_canonical_service",
+                  "value": {
+                    "stringValue": "podinfo"
+                  }
+                },
+                {
+                  "key": "node_id",
+                  "value": {
+                    "stringValue": "waypoint~10.244.1.145~waypoint-5f8884c48c-fnxvm.tp-idl-svgkbx~tp-idl-svgkbx.svc.cluster.local"
+                  }
+                },
+                {
+                  "key": "istio.source_workload",
+                  "value": {
+                    "stringValue": "client"
+                  }
+                },
+                {
+                  "key": "istio.destination_instance_name",
+                  "value": {
+                    "stringValue": "podinfo-84f8777587-dzhth"
+                  }
+                },
+                {
+                  "key": "istio.source_instance_name",
+                  "value": {
+                    "stringValue": "client-96d57bbcf-b44zx"
+                  }
+                },
+                {
+                  "key": "status",
+                  "value": {
+                    "stringValue": "unset"
+                  }
+                },
+                {
+                  "key": "istio.source_namespace",
+                  "value": {
+                    "stringValue": "tp-idl-svgkbx"
+                  }
+                },
+                {
+                  "key": "http.method",
+                  "value": {
+                    "stringValue": "GET"
+                  }
+                },
+                {
+                  "key": "component",
+                  "value": {
+                    "stringValue": "proxy"
+                  }
+                },
+                {
+                  "key": "upstream_cluster",
+                  "value": {
+                    "stringValue": "inbound-vip|9898|http|podinfo.tp-idl-svgkbx.svc.cluster.local"
+                  }
+                },
+                {
+                  "key": "response_flags",
+                  "value": {
+                    "stringValue": "-"
+                  }
+                },
+                {
+                  "key": "istio.destination_namespace",
+                  "value": {
+                    "stringValue": "tp-idl-svgkbx"
+                  }
+                }
+              ]
+            },
+            {
+              "spanID": "128889183f80ed56",
+              "name": "GET /version",
+              "startTimeUnixNano": "1791814731548164491",
+              "durationNanos": "69542",
+              "attributes": [
+                {
+                  "key": "status",
+                  "value": {
+                    "stringValue": "unset"
+                  }
+                }
+              ]
+            }
+          ],
+          "matched": 2
+        }
+      ]
+    },
+    {
+      "traceID": "154b7e552e97f1d529f04168ac4017e9",
+      "rootServiceName": "waypoint.tp-idl-svgkbx",
+      "rootTraceName": "podinfo.tp-idl-svgkbx.svc.cluster.local:9898/*",
+      "startTimeUnixNano": "1791814731531574000",
+      "durationMs": 1,
+      "spanSet": {
+        "spans": [
+          {
+            "spanID": "ba5886948248a2c3",
+            "name": "podinfo.tp-idl-svgkbx.svc.cluster.local:9898/*",
+            "startTimeUnixNano": "1791814731531574000",
+            "durationNanos": "1274000",
+            "attributes": [
+              {
+                "key": "istio.source_workload",
+                "value": {
+                  "stringValue": "client"
+                }
+              },
+              {
+                "key": "istio.destination_canonical_service",
+                "value": {
+                  "stringValue": "podinfo"
+                }
+              },
+              {
+                "key": "istio.destination_namespace",
+                "value": {
+                  "stringValue": "tp-idl-svgkbx"
+                }
+              },
+              {
+                "key": "node_id",
+                "value": {
+                  "stringValue": "waypoint~10.244.1.145~waypoint-5f8884c48c-fnxvm.tp-idl-svgkbx~tp-idl-svgkbx.svc.cluster.local"
+                }
+              },
+              {
+                "key": "component",
+                "value": {
+                  "stringValue": "proxy"
+                }
+              },
+              {
+                "key": "response_flags",
+                "value": {
+                  "stringValue": "-"
+                }
+              },
+              {
+                "key": "istio.destination_instance_name",
+                "value": {
+                  "stringValue": "podinfo-84f8777587-dzhth"
+                }
+              },
+              {
+                "key": "istio.source_canonical_service",
+                "value": {
+                  "stringValue": "client"
+                }
+              },
+              {
+                "key": "http.method",
+                "value": {
+                  "stringValue": "GET"
+                }
+              },
+              {
+                "key": "upstream_cluster",
+                "value": {
+                  "stringValue": "inbound-vip|9898|http|podinfo.tp-idl-svgkbx.svc.cluster.local"
+                }
+              },
+              {
+                "key": "istio.source_namespace",
+                "value": {
+                  "stringValue": "tp-idl-svgkbx"
+                }
+              },
+              {
+                "key": "service.name",
+                "value": {
+                  "stringValue": "waypoint.tp-idl-svgkbx"
+                }
+              },
+              {
+                "key": "istio.destination_workload",
+                "value": {
+                  "stringValue": "podinfo"
+                }
+              },
+              {
+                "key": "istio.source_instance_name",
+                "value": {
+                  "stringValue": "client-96d57bbcf-b44zx"
+                }
+              },
+              {
+                "key": "status",
+                "value": {
+                  "stringValue": "unset"
+                }
+              }
+            ]
+          },
+          {
+            "spanID": "e8d37e1be60b6201",
+            "name": "infoHandler",
+            "startTimeUnixNano": "1791814731532257920",
+            "durationNanos": "68150",
+            "attributes": [
+              {
+                "key": "status",
+                "value": {
+                  "stringValue": "unset"
+                }
+              }
+            ]
+          },
+          {
+            "spanID": "fc0602055781bc46",
+            "name": "GET /",
+            "startTimeUnixNano": "1791814731532242030",
+            "durationNanos": "142421",
+            "attributes": [
+              {
+                "key": "status",
+                "value": {
+                  "stringValue": "unset"
+                }
+              }
+            ]
+          }
+        ],
+        "matched": 3
+      },
+      "spanSets": [
+        {
+          "spans": [
+            {
+              "spanID": "ba5886948248a2c3",
+              "name": "podinfo.tp-idl-svgkbx.svc.cluster.local:9898/*",
+              "startTimeUnixNano": "1791814731531574000",
+              "durationNanos": "1274000",
+              "attributes": [
+                {
+                  "key": "istio.source_workload",
+                  "value": {
+                    "stringValue": "client"
+                  }
+                },
+                {
+                  "key": "istio.destination_canonical_service",
+                  "value": {
+                    "stringValue": "podinfo"
+                  }
+                },
+                {
+                  "key": "istio.destination_namespace",
+                  "value": {
+                    "stringValue": "tp-idl-svgkbx"
+                  }
+                },
+                {
+                  "key": "node_id",
+                  "value": {
+                    "stringValue": "waypoint~10.244.1.145~waypoint-5f8884c48c-fnxvm.tp-idl-svgkbx~tp-idl-svgkbx.svc.cluster.local"
+                  }
+                },
+                {
+                  "key": "component",
+                  "value": {
+                    "stringValue": "proxy"
+                  }
+                },
+                {
+                  "key": "response_flags",
+                  "value": {
+                    "stringValue": "-"
+                  }
+                },
+                {
+                  "key": "istio.destination_instance_name",
+                  "value": {
+                    "stringValue": "podinfo-84f8777587-dzhth"
+                  }
+                },
+                {
+                  "key": "istio.source_canonical_service",
+                  "value": {
+                    "stringValue": "client"
+                  }
+                },
+                {
+                  "key": "http.method",
+                  "value": {
+                    "stringValue": "GET"
+                  }
+                },
+                {
+                  "key": "upstream_cluster",
+                  "value": {
+                    "stringValue": "inbound-vip|9898|http|podinfo.tp-idl-svgkbx.svc.cluster.local"
+                  }
+                },
+                {
+                  "key": "istio.source_namespace",
+                  "value": {
+                    "stringValue": "tp-idl-svgkbx"
+                  }
+                },
+                {
+                  "key": "service.name",
+                  "value": {
+                    "stringValue": "waypoint.tp-idl-svgkbx"
+                  }
+                },
+                {
+                  "key": "istio.destination_workload",
+                  "value": {
+                    "stringValue": "podinfo"
+                  }
+                },
+                {
+                  "key": "istio.source_instance_name",
+                  "value": {
+                    "stringValue": "client-96d57bbcf-b44zx"
+                  }
+                },
+                {
+                  "key": "status",
+                  "value": {
+                    "stringValue": "unset"
+                  }
+                }
+              ]
+            },
+            {
+              "spanID": "e8d37e1be60b6201",
+              "name": "infoHandler",
+              "startTimeUnixNano": "1791814731532257920",
+              "durationNanos": "68150",
+              "attributes": [
+                {
+                  "key": "status",
+                  "value": {
+                    "stringValue": "unset"
+                  }
+                }
+              ]
+            },
+            {
+              "spanID": "fc0602055781bc46",
+              "name": "GET /",
+              "startTimeUnixNano": "1791814731532242030",
+              "durationNanos": "142421",
+              "attributes": [
+                {
+                  "key": "status",
+                  "value": {
+                    "stringValue": "unset"
+                  }
+                }
+              ]
+            }
+          ],
+          "matched": 3
+        }
+      ]
+    }
+  ],
+  "metrics": {
+    "inspectedBytes": "217135",
+    "totalBlocks": 3,
+    "completedJobs": 4,
+    "totalJobs": 4,
+    "totalBlockBytes": "120810"
+  }
+}
