@@ -1,0 +1,46 @@
+# The names Kiali's copy of Tempo's query IDL declares, one per line, as
+# "Service/Rpc" or "Message.field". hack/gen-tempo-protos.sh keeps these and
+# nothing else, taking every field number from upstream.
+#
+# Names, never numbers: a rename is what breaks a reader of upstream's IDL, and
+# a name that has gone makes the generator stop. The numbers are upstream's, and
+# the generator asserts each name still carries the same one in every release in
+# TEMPO_VERSIONS.
+
+StreamingQuerier/Search
+
+SearchRequest.Tags
+SearchRequest.MinDurationMs
+SearchRequest.Limit
+SearchRequest.start
+SearchRequest.end
+SearchRequest.Query
+SearchRequest.SpansPerSpanSet
+
+SearchResponse.traces
+SearchResponse.metrics
+
+TraceSearchMetadata.traceID
+TraceSearchMetadata.rootServiceName
+TraceSearchMetadata.rootTraceName
+TraceSearchMetadata.startTimeUnixNano
+TraceSearchMetadata.durationMs
+TraceSearchMetadata.spanSet
+TraceSearchMetadata.spanSets
+
+SpanSet.spans
+SpanSet.matched
+SpanSet.attributes
+
+Span.spanID
+Span.name
+Span.startTimeUnixNano
+Span.durationNanos
+Span.attributes
+
+SearchMetrics.inspectedTraces
+SearchMetrics.inspectedBytes
+SearchMetrics.totalBlocks
+SearchMetrics.completedJobs
+SearchMetrics.totalJobs
+SearchMetrics.totalBlockBytes

@@ -1,7 +1,9 @@
 package querypb
 
 import (
+	"fmt"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -13,6 +15,7 @@ import (
 )
 
 const (
+	allowFile           = "../../../hack/tempo-querypb.allow"
 	responseAmbientFile = "../../tracingtest/responseAmbient.json"
 	responseFile        = "../../tracingtest/response.json"
 	responseTypedErrors = "../../tracingtest/responseTypedErrors.json"
@@ -39,12 +42,13 @@ func fieldNumbers(t *testing.T, message proto.Message) map[string]protoreflect.F
 	return numbers
 }
 
-// The numbers are upstream's, verified against Tempo 3.1.0. A renumbered field
-// is accepted over the wire as whatever Tempo calls that number, so a search
-// answers with plausible nonsense rather than an error.
-// The field numbers are checked against the upstream IDL by
-// hack/gen-tempo-protos.sh, which fetches it. This pins them against what was
-// recorded here, so an edit to the IDL that nobody regenerated fails the suite.
+// The numbers are upstream's. A renumbered field is accepted over the wire as
+// whatever Tempo calls that number, so a search answers with plausible nonsense
+// rather than an error.
+//
+// hack/gen-tempo-protos.sh checks them against every Tempo release it names, by
+// fetching each one's IDL. This pins them against what was recorded here, so an
+// IDL that nobody regenerated fails the suite without a network.
 func TestFieldNumbersAreUnchanged(t *testing.T) {
 	assert := assert.New(t)
 
@@ -99,6 +103,47 @@ func TestSearchIsTheOnlyRPC(t *testing.T) {
 	assert.Equal("Search", StreamingQuerier_ServiceDesc.Streams[0].StreamName)
 	assert.True(StreamingQuerier_ServiceDesc.Streams[0].ServerStreams)
 	assert.Empty(StreamingQuerier_ServiceDesc.Methods)
+}
+
+// hack/tempo-querypb.allow is what decides the IDL's contents, so what the IDL
+// declares has to be what that file says. A name added to or taken out of the
+// allow-list and not generated fails here, where it would otherwise be noticed
+// only by whoever next runs the generator.
+func TestDeclarationsAreTheAllowList(t *testing.T) {
+	assert := assert.New(t)
+	require := require.New(t)
+
+	listed, err := os.ReadFile(allowFile)
+	require.NoError(err)
+
+	var allowed []string
+	for _, line := range strings.Split(string(listed), "\n") {
+		if name, _, _ := strings.Cut(line, "#"); strings.TrimSpace(name) != "" {
+			allowed = append(allowed, strings.TrimSpace(name))
+		}
+	}
+	require.NotEmpty(allowed)
+
+	file := (&SearchResponse{}).ProtoReflect().Descriptor().ParentFile()
+	var declared []string
+	services := file.Services()
+	for i := range services.Len() {
+		service := services.Get(i)
+		methods := service.Methods()
+		for j := range methods.Len() {
+			declared = append(declared, fmt.Sprintf("%s/%s", service.Name(), methods.Get(j).Name()))
+		}
+	}
+	messages := file.Messages()
+	for i := range messages.Len() {
+		message := messages.Get(i)
+		fields := message.Fields()
+		for j := range fields.Len() {
+			declared = append(declared, fmt.Sprintf("%s.%s", message.Name(), fields.Get(j).Name()))
+		}
+	}
+
+	assert.ElementsMatch(allowed, declared)
 }
 
 // Span attributes are the published OTLP types, so a typed value arrives as the
