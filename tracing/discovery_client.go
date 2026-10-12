@@ -481,7 +481,8 @@ func validateEndpoint(ctx context.Context, client http.Client, zl *zerolog.Logge
 		return &vc, logs, nil
 	}
 	// Try Tempo. The probe asks /api/search for everything, so the body is the search answer the
-	// Tempo client reads, and a field a newer Tempo adds to it must not fail the discovery.
+	// Tempo client reads, and every Tempo sends more of it than the IDL declares: a strict decode
+	// rejects a healthy backend here.
 	var response querypb.SearchResponse
 	if errMarshal := (protojson.UnmarshalOptions{DiscardUnknown: true}).Unmarshal(resp, &response); errMarshal != nil {
 		msg := fmt.Sprintf("[Discovery client] Error unmarshalling Tempo response: %s [URL: %v]", errMarshal, endpoint)

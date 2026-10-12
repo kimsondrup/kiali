@@ -44,6 +44,28 @@ and `protoc` then rejects anyone declaring something else at one of those number
   or the rewritten OTLP model. Upstream retyping a field Kiali reads to something
   Tempo-local stops the generator instead of dragging another upstream model in.
 
+==== The Tempo versions this is for
+
+`TEMPO_VERSIONS` names v2.2.0 to v3.1.0, eleven releases over three years, and every
+allow-listed name is asserted to carry the same number and type in all of them. There is
+no declared ceiling.
+
+The floor is not the IDL's. A v2.0.0 answer decodes into these stubs: every name the
+allow-list carries that v2.0.0 declares, it declares at the same number, and the three it
+does not have yet - `SpansPerSpanSet`, `spanSets` and `SpanSet.attributes` - are simply
+absent from the answer. Two other things decide the floor, and both land on v2.2.0:
+
+* `StreamingQuerier` first appears at v2.2.0. An older Tempo answers
+  `Unimplemented: unknown service tempopb.StreamingQuerier`.
+* Both transports emit `| select(...)`, which TraceQL gained at v2.2.0. Tempo 2.0.0
+  answers HTTP 400 naming the column it cannot parse.
+
+So no decoder tolerance widens the floor, and v2.1.0 is unverified rather than excluded.
+What holds the ceiling open is not the IDL's contents either: it is `DiscardUnknown` on
+the HTTP decode and proto3's own dropping of an undeclared field over gRPC. Closing it
+takes a renumbering or a removal on a name the allow-list carries, which is what the
+generator refuses to generate through.
+
 ==== What is left out, and why that is the point
 
 The allow-list is the whole of Kiali's Tempo surface. A field read by nothing is not

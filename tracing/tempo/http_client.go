@@ -231,13 +231,14 @@ const (
 )
 
 // unmarshalSearch drops a field the IDL does not declare rather than failing on it, which the
-// OTLP specification requires of the attributes the answer embeds and which Tempo's own habit of
-// growing the answer between releases requires of the rest of it: a backend answering ahead of
-// the generated stubs must not be able to blank the traces list. None of the captured responses
-// needs the leniency - it is there for the Tempo that has not shipped yet.
+// OTLP specification requires of the attributes the answer embeds and which Tempo's own answer
+// requires of the rest of it: every Tempo sends more of a matched trace than Kiali reads, so a
+// strict decode of a healthy backend fails outright and comes out as no traces. The captured
+// 2.3.0 and 3.1.0 bodies both fail a strict decode on startTimeUnixNano, and a 3.1.0 trace
+// carries a serviceStats the IDL has no name for either.
 //
-// What strictness would have bought is bought instead by the envelope check below, which is what
-// tells a Tempo search answer from any other JSON object.
+// Telling a Tempo search answer from any other JSON object is the envelope check's job below,
+// rather than something the decoder does by accident.
 var unmarshalSearch = protojson.UnmarshalOptions{DiscardUnknown: true}
 
 func unmarshal(ctx context.Context, r []byte, u *url.URL) (*querypb.SearchResponse, error) {
