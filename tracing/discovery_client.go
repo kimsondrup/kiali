@@ -16,14 +16,15 @@ import (
 	"github.com/rs/zerolog"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/kiali/kiali/config"
 	"github.com/kiali/kiali/log"
 	"github.com/kiali/kiali/tracing/jaeger"
 	"github.com/kiali/kiali/tracing/jaeger/model"
 	"github.com/kiali/kiali/tracing/otel"
-	otelModel "github.com/kiali/kiali/tracing/otel/model"
 	"github.com/kiali/kiali/tracing/tempo"
+	"github.com/kiali/kiali/tracing/tempo/querypb"
 	"github.com/kiali/kiali/util/grpcutil"
 	"github.com/kiali/kiali/util/httputil"
 )
@@ -478,9 +479,10 @@ func validateEndpoint(ctx context.Context, client http.Client, zl *zerolog.Logge
 		zl.Trace().Msg(msg)
 		return &vc, logs, nil
 	}
-	// Try Tempo
-	var response otelModel.Traces
-	if errMarshal := json.Unmarshal(resp, &response); errMarshal != nil {
+	// Try Tempo. The probe asks /api/search for everything, so the body is the search answer the
+	// Tempo client reads, and a field a newer Tempo adds to it must not fail the discovery.
+	var response querypb.SearchResponse
+	if errMarshal := (protojson.UnmarshalOptions{DiscardUnknown: true}).Unmarshal(resp, &response); errMarshal != nil {
 		msg := fmt.Sprintf("[Discovery client] Error unmarshalling Tempo response: %s [URL: %v]", errMarshal, endpoint)
 		logs = append(logs, model.LogLine{Time: time.Now(), Test: endpoint, Result: msg})
 		zl.Trace().Msg(msg)
@@ -488,8 +490,8 @@ func validateEndpoint(ctx context.Context, client http.Client, zl *zerolog.Logge
 	}
 	ns := false
 	vc := model.ValidConfig{Url: validEndpoint, Provider: "tempo", UseGRPC: false}
-	for _, rd := range response.Traces {
-		parts := strings.Split(rd.RootServiceName, ".")
+	for _, rd := range response.GetTraces() {
+		parts := strings.Split(rd.GetRootServiceName(), ".")
 		if len(parts) > 1 {
 			ns = true
 			break
