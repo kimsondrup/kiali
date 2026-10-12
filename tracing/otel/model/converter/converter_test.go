@@ -207,3 +207,40 @@ func getAttributes() []otelModels.Attribute {
 
 	return attbs
 }
+
+// TestConvertTraceMetadataOperationName covers the name reported for a span matched by Tempo's gRPC
+// search. The search asks for each span's name, so a span reports its own; the trace's root name is
+// the fallback for a span that has none, which is the rule the HTTP search path follows.
+func TestConvertTraceMetadataOperationName(t *testing.T) {
+	const rootName = "productpage.bookinfo.svc.cluster.local:9080/*"
+
+	cases := map[string]struct {
+		spanName     string
+		expectedName string
+	}{
+		"a span with its own name": {spanName: "reviews.bookinfo.svc.cluster.local:9080/*", expectedName: "reviews.bookinfo.svc.cluster.local:9080/*"},
+		"a span with no name":      {spanName: "", expectedName: rootName},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			trace := tempopb.TraceSearchMetadata{
+				TraceID:       getId(),
+				RootTraceName: rootName,
+				SpanSet: &tempopb.SpanSet{
+					Spans: []*tempopb.Span{{
+						SpanID:            "2e6ca056f5fc6fdc",
+						Name:              tc.spanName,
+						StartTimeUnixNano: 1693389472310270000,
+						DurationNanos:     646000,
+					}},
+				},
+			}
+
+			converted, err := ConvertTraceMetadata(trace, "reviews.bookinfo")
+			require.NoError(t, err)
+			require.Len(t, converted.Spans, 1)
+			assert.Equal(t, tc.expectedName, converted.Spans[0].OperationName)
+		})
+	}
+}
