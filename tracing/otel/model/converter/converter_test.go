@@ -154,6 +154,20 @@ func TestConvertTraceMetadataDuration(t *testing.T) {
 	}
 }
 
+// TestConvertTraceMetadataNoSpanSet covers a search result that carries no span set at all. The
+// empty search request behind the tracing health check is answered with results of exactly that
+// shape, so it reaches this function off the wire and not only in theory.
+func TestConvertTraceMetadataNoSpanSet(t *testing.T) {
+	trace := tempopb.TraceSearchMetadata{
+		TraceID:       getId(),
+		RootTraceName: "reviews.bookinfo.svc.cluster.local:9080/*",
+	}
+
+	converted, err := ConvertTraceMetadata(trace, "reviews.bookinfo")
+	require.NoError(t, err)
+	assert.Empty(t, converted.Spans)
+}
+
 // TestConvertSpanSetNoStartTime covers a span that Tempo's search API answers with and that carries
 // no start time. Reported with a start time of zero it is dated to the Unix epoch; ConvertSpans
 // drops such a span on the trace detail path, and this is the same rule on the path that feeds the

@@ -85,7 +85,10 @@ func ConvertTraceMetadata(trace tempopb.TraceSearchMetadata, serviceName string)
 		Processes: map[jaegerModels.ProcessID]jaegerModels.Process{},
 		Warnings:  []string{},
 	}
-	for _, span := range trace.SpanSet.Spans {
+	// A search result need not carry a span set: an empty search request is answered with results
+	// that have none. The generated getters are nil-safe, so such a result converts to a trace
+	// with no spans rather than bringing the request down.
+	for _, span := range trace.GetSpanSet().GetSpans() {
 		spanSet := convertOtelSpan(span, serviceName, trace.TraceID, trace.RootTraceName)
 		jaegerTrace.Spans = append(jaegerTrace.Spans, spanSet)
 	}
