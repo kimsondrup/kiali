@@ -24,7 +24,7 @@ env:
 
 jobs:
   integration_tests_frontend_core_2:
-    name: Cypress tests (core 2)
+    name: Cypress tests (core 2, Jaeger tracing)
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
@@ -81,7 +81,7 @@ jobs:
       working-directory: ./frontend
       run: yarn install --immutable
 
-    - name: Run frontend core 2 integration tests
+    - name: Run frontend core 2 and Jaeger tracing integration tests
       run: hack/run-integration-tests.sh --test-suite frontend-core-2 --stern ${{ inputs.stern_logs }} $(if [ -n "${{ inputs.istio_version }}" ]; then echo "--istio-version ${{ inputs.istio_version }}"; fi)
 
     - name: Upload test results

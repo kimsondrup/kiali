@@ -824,7 +824,9 @@ elif [ "${TEST_SUITE}" == "${FRONTEND_CORE_2}" ]; then
 
   cd "${SCRIPT_DIR}"/../frontend
   set +e
-  TEST_GROUP="@core-2" yarn run cypress:run:test-group:junit
+  # @tracing runs here too: this suite deploys Istio's Jaeger addon and leaves Kiali on its
+  # shipped tracing defaults (jaeger provider, api_v2 over gRPC), which no other wave 1 suite covers.
+  TEST_GROUP="@core-2 or @tracing" yarn run cypress:run:test-group:junit
   CYPRESS_EXIT=$?
   set -e
   yarn run cypress:combine:reports
