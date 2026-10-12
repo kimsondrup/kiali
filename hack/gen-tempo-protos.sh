@@ -60,6 +60,61 @@ else
   echo "  ${TEMPO_APACHE_DIR} is Apache-2.0."
 fi
 
+# Assert the trimmed IDL still agrees with the one it was trimmed from, rather than
+# trusting that it did when it was written. Every field this repo declares must exist
+# upstream at the same number: a number that drifts is a wire incompatibility that
+# nothing else here would notice, and the generated code's own tests only pin what was
+# recorded, not what upstream says. Skipped loudly without a network, for the reason
+# the licence check is.
+echo "Checking field numbers against Tempo ${TEMPO_VERSION}..."
+UPSTREAM_PROTO_URL="https://raw.githubusercontent.com/grafana/tempo/${TEMPO_VERSION}/${TEMPO_APACHE_DIR}/tempo.proto"
+if ! curl -sfL --max-time 30 "${UPSTREAM_PROTO_URL}" -o "${WORKDIR}/upstream.proto"; then
+  echo "warning: could not fetch ${UPSTREAM_PROTO_URL}; field numbers are UNVERIFIED." >&2
+else
+  # Emit "Message.field number" for every field of every message. Comments, option
+  # lines, bracketed field options and reserved ranges are not fields. A map<k, v>
+  # type contains a space, so the name is the token before the "=", not a column.
+  cat > "${WORKDIR}/fields.awk" <<'AWK'
+{ sub(/\/\/.*/, ""); gsub(/\[[^]]*\]/, "") }
+/^[[:space:]]*message[[:space:]]+[A-Za-z_]+[[:space:]]*\{/ {
+  match($0, /message[[:space:]]+[A-Za-z_]+/)
+  msg = substr($0, RSTART + 8, RLENGTH - 8)
+  gsub(/^[[:space:]]+|[[:space:]]+$/, "", msg)
+  next
+}
+/^[[:space:]]*\}/ { msg = ""; next }
+msg == "" { next }
+/^[[:space:]]*(option|reserved|oneof)\b/ { next }
+/=[[:space:]]*[0-9]+[[:space:]]*;/ {
+  line = $0
+  sub(/;.*/, "", line)
+  n = split(line, tok, /[[:space:]]*=[[:space:]]*/)
+  if (n < 2) next
+  num = tok[2]
+  gsub(/[^0-9]/, "", num)
+  split(tok[1], lhs, /[[:space:]]+/)
+  name = ""
+  for (i in lhs) if (lhs[i] != "") name = lhs[i]
+  if (name != "" && num != "") print msg "." name " " num
+}
+AWK
+  awk -f "${WORKDIR}/fields.awk" "${PROTODIR}/tempo.proto" | sort > "${WORKDIR}/ours.txt"
+  awk -f "${WORKDIR}/fields.awk" "${WORKDIR}/upstream.proto" | sort > "${WORKDIR}/theirs.txt"
+  if [ ! -s "${WORKDIR}/ours.txt" ] || [ ! -s "${WORKDIR}/theirs.txt" ]; then
+    echo "fatal: parsed no fields from one of the protos, so the comparison proves nothing." >&2
+    exit 1
+  fi
+  DRIFT="$(comm -23 "${WORKDIR}/ours.txt" "${WORKDIR}/theirs.txt")"
+  if [ -n "${DRIFT}" ]; then
+    echo "fatal: these fields do not match Tempo ${TEMPO_VERSION} at the same number:" >&2
+    echo "${DRIFT}" | sed 's/^/         /' >&2
+    echo "       ${UPSTREAM_PROTO_URL} is the IDL this one is trimmed from. Either the" >&2
+    echo "       trim is wrong, or TEMPO_VERSION needs moving deliberately." >&2
+    exit 1
+  fi
+  echo "  $(wc -l < "${WORKDIR}/ours.txt" | tr -d ' ') fields agree with upstream."
+fi
+
 if [ -z "${PROTOC:-}" ]; then
   echo "Fetching protoc ${PROTOC_VERSION}..."
   case "$(uname -m)" in

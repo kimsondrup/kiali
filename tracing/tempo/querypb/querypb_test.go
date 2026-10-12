@@ -42,7 +42,10 @@ func fieldNumbers(t *testing.T, message proto.Message) map[string]protoreflect.F
 // The numbers are upstream's, verified against Tempo 3.1.0. A renumbered field
 // is accepted over the wire as whatever Tempo calls that number, so a search
 // answers with plausible nonsense rather than an error.
-func TestFieldNumbersMatchUpstream(t *testing.T) {
+// The field numbers are checked against the upstream IDL by
+// hack/gen-tempo-protos.sh, which fetches it. This pins them against what was
+// recorded here, so an edit to the IDL that nobody regenerated fails the suite.
+func TestFieldNumbersAreUnchanged(t *testing.T) {
 	assert := assert.New(t)
 
 	assert.Equal(map[string]protoreflect.FieldNumber{
