@@ -111,8 +111,7 @@ func TestConvertTraceMetadataDuration(t *testing.T) {
 				},
 			}
 
-			converted, err := ConvertTraceMetadata(trace, "reviews.bookinfo")
-			require.NoError(t, err)
+			converted := ConvertTraceMetadata(trace, "reviews.bookinfo")
 			require.Len(t, converted.Spans, 1)
 			assert.Equal(t, tc.expectedDuration, converted.Spans[0].Duration)
 		})
@@ -146,8 +145,7 @@ func TestTraceIdIsTheSameOnBothTempoTransports(t *testing.T) {
 				},
 			}
 
-			overGRPC, err := ConvertTraceMetadata(trace, "reviews.bookinfo")
-			require.NoError(t, err)
+			overGRPC := ConvertTraceMetadata(trace, "reviews.bookinfo")
 			require.Len(t, overGRPC.Spans, 1)
 			assert.Equal(t, jaegerModels.TraceID(tc.expected), overGRPC.TraceID)
 			assert.Equal(t, overGRPC.TraceID, overGRPC.Spans[0].TraceID)
@@ -168,11 +166,10 @@ func TestTraceIdIsTheSameOnBothTempoTransports(t *testing.T) {
 // a pointer, so a TraceSearchMetadata that carries none is a nil dereference rather than an empty
 // range - a SIGSEGV on the path every Tempo traces list takes, reached from processStream.
 func TestConvertTraceMetadataWithoutSpanSet(t *testing.T) {
-	converted, err := ConvertTraceMetadata(&querypb.TraceSearchMetadata{
+	converted := ConvertTraceMetadata(&querypb.TraceSearchMetadata{
 		TraceID:       "cafe9bc0903e18f6b914752f8ee577a5",
 		RootTraceName: "reviews.bookinfo.svc.cluster.local:9080/*",
 	}, "reviews.bookinfo")
-	require.NoError(t, err)
 	require.NotNil(t, converted)
 	assert.Equal(t, jaegerModels.TraceID("cafe9bc0903e18f6b914752f8ee577a5"), converted.TraceID)
 	assert.Equal(t, 0, converted.Matched)
@@ -190,11 +187,10 @@ func TestConvertTraceMetadataWithoutSpanSet(t *testing.T) {
 // TestConvertTraceMetadataWithAnEmptySpanSet covers the same answer written with the key present
 // and holding nothing, which is what Tempo's HTTP transport sends for such a trace.
 func TestConvertTraceMetadataWithAnEmptySpanSet(t *testing.T) {
-	converted, err := ConvertTraceMetadata(&querypb.TraceSearchMetadata{
+	converted := ConvertTraceMetadata(&querypb.TraceSearchMetadata{
 		TraceID: "cafe9bc0903e18f6b914752f8ee577a5",
 		SpanSet: &querypb.SpanSet{},
 	}, "reviews.bookinfo")
-	require.NoError(t, err)
 	assert.NotNil(t, converted.Spans)
 	assert.Empty(t, converted.Spans)
 }
@@ -366,8 +362,7 @@ func TestConvertTraceMetadataOperationName(t *testing.T) {
 				},
 			}
 
-			converted, err := ConvertTraceMetadata(trace, "reviews.bookinfo")
-			require.NoError(t, err)
+			converted := ConvertTraceMetadata(trace, "reviews.bookinfo")
 			require.Len(t, converted.Spans, 1)
 			assert.Equal(t, tc.expectedName, converted.Spans[0].OperationName)
 		})

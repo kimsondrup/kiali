@@ -59,7 +59,7 @@ func SearchTrace(traceID jaegerModels.TraceID, spans []jaegerModels.Span, matche
 //
 // The metadata is taken by pointer because a generated message carries a mutex, so copying one is
 // what go vet's copylocks reports.
-func ConvertTraceMetadata(trace *querypb.TraceSearchMetadata, serviceName string) (*jaegerModels.Trace, error) {
+func ConvertTraceMetadata(trace *querypb.TraceSearchMetadata, serviceName string) *jaegerModels.Trace {
 	traceID := ConvertId(trace.TraceID)
 
 	var spans []jaegerModels.Span
@@ -71,7 +71,7 @@ func ConvertTraceMetadata(trace *querypb.TraceSearchMetadata, serviceName string
 	}
 
 	jaegerTrace := SearchTrace(traceID, spans, len(spans))
-	return &jaegerTrace, nil
+	return &jaegerTrace
 }
 
 // convertOtelSpan used for GRPC format Spans

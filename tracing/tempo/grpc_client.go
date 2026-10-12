@@ -173,11 +173,7 @@ func processStream(ctx context.Context, stream querypb.StreamingQuerier_SearchCl
 			return nil, fmt.Errorf("[gRPC Tempo] Tracing gRPC client, stream error: %v", err)
 		}
 		for _, trace := range received.Traces {
-			batchTrace, err := converter.ConvertTraceMetadata(trace, serviceName)
-			if err != nil {
-				zl.Error().Msgf("[gRPC Tempo] Error getting trace detail for %s: %s", trace.TraceID, err.Error())
-				continue
-			}
+			batchTrace := converter.ConvertTraceMetadata(trace, serviceName)
 			if _, seen := latest[batchTrace.TraceID]; !seen {
 				order = append(order, batchTrace.TraceID)
 			}
