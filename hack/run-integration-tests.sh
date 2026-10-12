@@ -481,7 +481,8 @@ ensureKialiTracesReady() {
   local multicluster=$1
   local traces_date
   start_time=$(date +%s)
-  end_time=$((start_time + 120))
+  # 180s, not 120s: traffic generation plus export and indexing in the tracing backend can outlast 120s on a busy CI runner.
+  end_time=$((start_time + 180))
 
   # Get traces from the last 5m
   traces_date=$((($(date +%s) - 300) * 1000))
@@ -501,8 +502,16 @@ ensureKialiTracesReady() {
       local now
       now=$(date +%s)
       if [ "${now}" -gt "${end_time}" ]; then
-        echo "Timed out waiting for Kiali to get any trace. Examine open telemetry collector logs below:"
-        kubectl logs -l app.kubernetes.io/name=opentelemetry-collector --tail=-1 --context kind-west -n istio-system
+        if [ "$multicluster" == "true" ]; then
+          echo "Timed out waiting for Kiali to get any trace. Examine open telemetry collector logs below:"
+          kubectl logs -l app.kubernetes.io/name=opentelemetry-collector --tail=-1 --context kind-west -n istio-system
+        else
+          # A single-cluster run has no west context and no collector of its own: the tracing backend
+          # is an Istio addon in istio-system, so list the pods there instead of guessing its labels.
+          echo "Timed out waiting for Kiali to get any trace. Examine the istio-system pods and the Kiali logs below:"
+          kubectl get pods -n istio-system
+          kubectl logs -l app=kiali --tail=100 -n istio-system
+        fi
         exit 1
       fi
       sleep 10
@@ -655,6 +664,10 @@ if [ "${TEST_SUITE}" == "${BACKEND}" ]; then
     cd "${SCRIPT_DIR}"/../tests/integration/mcp_tools
     go test -tags exclude_frontend -v -failfast ./... 2>&1 | tee >(go-junit-report > ../junit-rest-report-mcp-tools.xml) ../int-test-mcp-tools.log
   else
+    # The traces and spans tests assert on real traces, so wait for the first one
+    # to reach Kiali instead of racing the traffic generator.
+    ensureKialiTracesReady "false"
+
     # Run backend integration tests
     cd "${SCRIPT_DIR}"/../tests/integration/tests/
     go test -v -failfast -coverpkg=github.com/kiali/kiali/... -coverprofile=coverage-backend.out 2>&1 | tee >(go-junit-report > ../junit-rest-report.xml) ../int-test.log
@@ -893,8 +906,8 @@ elif [ "${TEST_SUITE}" == "${FRONTEND_AMBIENT}" ]; then
 
   ensureKialiServerReady
   ensureBookinfoGraphReady
-  # TODO: traces are not available at this time, but tests are passing anyway
-  # ensureKialiTracesReady "false"
+  # No traces gate here: this suite runs with token auth and ensureKialiTracesReady
+  # queries Kiali without credentials.
 
   export CYPRESS_BASE_URL="${KIALI_URL}"
   export CYPRESS_NUM_TESTS_KEPT_IN_MEMORY=0
