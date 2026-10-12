@@ -7,8 +7,8 @@
 # needs nothing but a Go toolchain. Run this script after editing the IDL and
 # commit what it changes.
 #
-# protoc, the two plugins and the OpenTelemetry protos the IDL imports are
-# fetched at pinned versions into a temporary directory, which keeps the
+# protoc, the plugins, goimports and the OpenTelemetry protos the IDL imports
+# are fetched at pinned versions into a temporary directory, which keeps the
 # generated output reproducible and third-party protos out of the repository.
 # Set PROTOC to use a protoc already installed instead of fetching one.
 
@@ -17,6 +17,9 @@ set -euo pipefail
 PROTOC_VERSION="36.2"
 PROTOC_GEN_GO_VERSION="v1.36.11"
 PROTOC_GEN_GO_GRPC_VERSION="v1.5.1"
+# goimports groups the generated imports the way `make format` does, so that
+# running that target over a fresh generation leaves the tree clean.
+GOIMPORTS_VERSION="v0.51.0"
 # Keep in step with the go.opentelemetry.io/proto/otlp version in go.mod: the
 # generated code imports that module instead of carrying its own OTLP types.
 OTEL_PROTO_VERSION="v1.10.0"
@@ -42,9 +45,10 @@ if [ -z "${PROTOC:-}" ]; then
   PROTOC="${WORKDIR}/protoc/bin/protoc"
 fi
 
-echo "Installing protoc-gen-go ${PROTOC_GEN_GO_VERSION} and protoc-gen-go-grpc ${PROTOC_GEN_GO_GRPC_VERSION}..."
+echo "Installing protoc-gen-go ${PROTOC_GEN_GO_VERSION}, protoc-gen-go-grpc ${PROTOC_GEN_GO_GRPC_VERSION} and goimports ${GOIMPORTS_VERSION}..."
 GOBIN="${WORKDIR}/bin" ${GO} install "google.golang.org/protobuf/cmd/protoc-gen-go@${PROTOC_GEN_GO_VERSION}"
 GOBIN="${WORKDIR}/bin" ${GO} install "google.golang.org/grpc/cmd/protoc-gen-go-grpc@${PROTOC_GEN_GO_GRPC_VERSION}"
+GOBIN="${WORKDIR}/bin" ${GO} install "golang.org/x/tools/cmd/goimports@${GOIMPORTS_VERSION}"
 
 echo "Fetching opentelemetry-proto ${OTEL_PROTO_VERSION}..."
 curl -sSfL "https://github.com/open-telemetry/opentelemetry-proto/archive/refs/tags/${OTEL_PROTO_VERSION}.tar.gz" | tar xz -C "${WORKDIR}"
@@ -56,6 +60,9 @@ PATH="${WORKDIR}/bin:${PATH}" "${PROTOC}" \
   --go_out="paths=source_relative:${PROTODIR}" \
   --go-grpc_out="paths=source_relative:${PROTODIR}" \
   tempo.proto
+
+echo "Formatting..."
+"${WORKDIR}/bin/goimports" -w -local github.com/kiali/kiali "${PROTODIR}"/*.pb.go
 
 echo "Generated:"
 ls -1 "${PROTODIR}"/*.pb.go
