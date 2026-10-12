@@ -66,6 +66,119 @@ func TestGetServicesReportsARequestError(t *testing.T) {
 	assert.NotContains(t, err.Error(), "unexpected end of JSON input")
 }
 
+// tempoStatusServices is what Tempo answers /status/services with, at 2.0.0 as at 3.1.0. The
+// route Kiali read for years: a table for a person to look at, not a document to parse.
+const tempoStatusServices = `GET /status/services
++-------------------+---------+--------------+
+| SERVICE NAME      |  STATUS | FAILURE CASE |
++-------------------+---------+--------------+
+| distributor       | Running |              |
+| querier           | Running |              |
++-------------------+---------+--------------+
+`
+
+// TestGetServicesReadsTheTagValues covers the shapes Tempo answers the tag values route with.
+// 3.1.0 always sends the key, 2.2.0 and 2.3.0 drop it when they have no value for the tag, and
+// nothing that is not this route's answer may read as a Tempo that knows no service.
+func TestGetServicesReadsTheTagValues(t *testing.T) {
+	cases := map[string]struct {
+		body             string
+		expectedServices []string
+		expectedError    []string
+	}{
+		"a live 3.1.0 answer": {
+			body:             `{"tagValues":["podinfo.tp-svc.svc.cluster.local","waypoint.tp-svc"],"metrics":{"inspectedBytes":"50432"}}`,
+			expectedServices: []string{"podinfo.tp-svc.svc.cluster.local", "waypoint.tp-svc"},
+		},
+		"a live 2.3.0 answer, which carries no metrics": {
+			body:             `{"tagValues":["podinfo.tp-svc.svc.cluster.local","waypoint.tp-svc"]}`,
+			expectedServices: []string{"podinfo.tp-svc.svc.cluster.local", "waypoint.tp-svc"},
+		},
+		// Not an error: a Tempo with no trace yet knows no service, and the two versions spell
+		// that answer differently.
+		"a 3.1.0 answer with nothing to name": {
+			body:             `{"tagValues":[],"metrics":{}}`,
+			expectedServices: []string{},
+		},
+		"a 2.3.0 answer with nothing to name": {
+			body:             `{}`,
+			expectedServices: []string{},
+		},
+		"the table /status/services answers": {
+			body:          tempoStatusServices,
+			expectedError: []string{"invalid character 'G'"},
+		},
+		"the services list of a Jaeger": {
+			body:          `{"data":["svc-a","svc-b"],"total":2}`,
+			expectedError: []string{"not a Tempo tag values response", `"data"`, `"total"`},
+		},
+		"the v2 route's typed values, which this route is not": {
+			body:          `{"tagValues":[{"type":"string","value":"waypoint.tp-svc"}]}`,
+			expectedError: []string{"cannot unmarshal object"},
+		},
+		"an error Tempo reports as a 200": {
+			body:          `{"error":"no org id","status":"error"}`,
+			expectedError: []string{"not a Tempo tag values response", `"error"`},
+		},
+		"a list where an object is expected": {
+			body:          `["svc-a","svc-b"]`,
+			expectedError: []string{"cannot unmarshal array"},
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			var requested string
+			httpClient := http.Client{Transport: RoundTripFunc(func(req *http.Request) *http.Response {
+				requested = req.URL.Path
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(strings.NewReader(tc.body)),
+				}
+			})}
+
+			tempoClient, err := NewOtelClient(context.TODO())
+			require.NoError(t, err)
+
+			services, err := tempoClient.GetServices(context.Background(), httpClient, getBaseUrl())
+
+			assert.Equal(t, "/api/search/tag/service.name/values", requested)
+			if len(tc.expectedError) > 0 {
+				require.Error(t, err, "a body Kiali cannot read must not reach the user as a Tempo that knows no service")
+				for _, expected := range tc.expectedError {
+					assert.Contains(t, err.Error(), expected)
+				}
+				assert.Nil(t, services)
+				return
+			}
+			require.NoError(t, err)
+			// Not nil even when empty: a nil slice serialises as JSON null.
+			require.NotNil(t, services)
+			assert.Equal(t, tc.expectedServices, services)
+		})
+	}
+}
+
+// TestGetServicesReportsAnErrorStatus covers a route this Tempo does not serve, where the body is
+// whatever answered instead and the status is the one thing worth reporting.
+func TestGetServicesReportsAnErrorStatus(t *testing.T) {
+	httpClient := http.Client{Transport: RoundTripFunc(func(req *http.Request) *http.Response {
+		return &http.Response{
+			StatusCode: http.StatusNotFound,
+			Body:       io.NopCloser(strings.NewReader("404 page not found")),
+		}
+	})}
+
+	tempoClient, err := NewOtelClient(context.TODO())
+	require.NoError(t, err)
+
+	services, err := tempoClient.GetServices(context.Background(), httpClient, getBaseUrl())
+
+	require.Error(t, err)
+	assert.Nil(t, services)
+	assert.Contains(t, err.Error(), "code: 404")
+}
+
 func getBaseUrl() *url.URL {
 	baseUrl, _ := url.Parse(tracingUrl)
 	return baseUrl

@@ -143,12 +143,22 @@ func (oc *OtelHTTPClient) GetServiceStatusHTTP(ctx context.Context, client http.
 }
 
 // GetServices reports the services Tempo knows of.
-func (oc *OtelHTTPClient) GetServices(ctx context.Context, client http.Client, baseURL *url.URL) (serviceList []string, err error) {
-	var u url.URL
-	servicesList := []string{}
-
-	u = *baseURL
-	u.Path = path.Join(u.Path, "/status/services")
+//
+// The names come from the tag values of service.name, not from /status/services, which is not
+// JSON: that route answers a "GET /status/services" line and a table drawn in ASCII, written by
+// a function that is byte-identical at 2.0.0 and 3.1.0, so reading it as a list of names has
+// never worked against any Tempo.
+//
+// The tag is unscoped because the v1 route takes unscoped names. Scoping it to
+// resource.service.name - the spelling the v2 route takes - measures as no values at all: empty
+// on 3.1.0, and an answer with no key at all on 2.2.0 and 2.3.0.
+//
+// No time range is asked for. Tempo 2.x ignores one and names every service it has ever seen,
+// and 3.1.0 without one names the services active recently; either is a service list, where a
+// range would be a number invented here.
+func (oc *OtelHTTPClient) GetServices(ctx context.Context, client http.Client, baseURL *url.URL) ([]string, error) {
+	u := *baseURL
+	u.Path = path.Join(u.Path, "/api/search/tag/service.name/values")
 
 	zl := getLoggerFromContextHTTPTempo(ctx)
 	r, code, reqError := otel.MakeRequest(ctx, client, u.String(), nil)
@@ -158,11 +168,42 @@ func (oc *OtelHTTPClient) GetServices(ctx context.Context, client http.Client, b
 		zl.Error().Msgf("[HTTP Tempo] API Tempo query error: %s [code: %d, URL: %v]", reqError, code, u)
 		return nil, reqError
 	}
-	if errMarshal := json.Unmarshal(r, &servicesList); errMarshal != nil {
-		zl.Error().Msgf("[HTTP Tempo] Error unmarshalling Tempo response: %s", errMarshal)
-		return nil, errMarshal
+	if code != 200 {
+		errorMsg := fmt.Sprintf("[HTTP Tempo] Tempo API query error: %s [code: %d, URL: %v]", r, code, u)
+		zl.Error().Msg(errorMsg)
+		return nil, errors.New(errorMsg)
 	}
-	return servicesList, nil
+	return unmarshalServices(ctx, r, &u)
+}
+
+// unmarshalServices reports the names a Tempo tag values answer carries.
+func unmarshalServices(ctx context.Context, r []byte, u *url.URL) ([]string, error) {
+	zl := getLoggerFromContextHTTPTempo(ctx)
+
+	var envelope map[string]json.RawMessage
+	if errEnvelope := json.Unmarshal(r, &envelope); errEnvelope != nil {
+		zl.Error().Msgf("[HTTP Tempo] Error unmarshalling Tempo API response: %s [URL: %v]", errEnvelope, u)
+		return nil, errEnvelope
+	}
+	// Fail when the body carries keys and none of them is this route's, so a wrong endpoint gives
+	// an error rather than a Tempo that knows no service. An object with no key at all is not one
+	// of those: it is how Tempo 2.x answers a tag it has no value for, measured on 2.2.0 and
+	// 2.3.0, where 3.1.0 sends the key and an empty list.
+	if len(envelope) > 0 && envelope[keyTagValues] == nil && envelope[keyMetrics] == nil {
+		errShape := fmt.Errorf("[HTTP Tempo] not a Tempo tag values response: it has none of %q and %q, only %q",
+			keyTagValues, keyMetrics, slices.Sorted(maps.Keys(envelope)))
+		zl.Error().Msgf("%s [URL: %v]", errShape, u)
+		return nil, errShape
+	}
+
+	services := []string{}
+	if envelope[keyTagValues] != nil {
+		if errMarshal := json.Unmarshal(envelope[keyTagValues], &services); errMarshal != nil {
+			zl.Error().Msgf("[HTTP Tempo] Error unmarshalling Tempo API response: %s [URL: %v]", errMarshal, u)
+			return nil, errMarshal
+		}
+	}
+	return services, nil
 }
 
 // queryTracesHTTP
@@ -229,6 +270,9 @@ const (
 	keyTraces  = "traces"
 	keyMetrics = "metrics"
 )
+
+// The key a Tempo tag values answer carries its names under.
+const keyTagValues = "tagValues"
 
 // unmarshalSearch drops a field the IDL does not declare rather than failing on it, which the
 // OTLP specification requires of the attributes the answer embeds and which Tempo's own answer
