@@ -1,9 +1,7 @@
 package querypb
 
 import (
-	"maps"
 	"os"
-	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -66,7 +64,6 @@ func TestFieldNumbersMatchUpstream(t *testing.T) {
 		"durationMs":        5,
 		"rootServiceName":   2,
 		"rootTraceName":     3,
-		"serviceStats":      8,
 		"spanSet":           6,
 		"spanSets":          7,
 		"startTimeUnixNano": 4,
@@ -107,7 +104,6 @@ func TestFixturesDecodeWithTypedAttributes(t *testing.T) {
 	cases := []struct {
 		attributeKinds map[string]int
 		file           string
-		serviceStats   []string
 		spans          int
 		traceID        string
 	}{
@@ -120,7 +116,6 @@ func TestFixturesDecodeWithTypedAttributes(t *testing.T) {
 		{
 			attributeKinds: map[string]int{"string": 31},
 			file:           responseAmbientFile,
-			serviceStats:   []string{"bookinfo-gateway-istio.bookinfo", "waypoint.bookinfo"},
 			spans:          4,
 			// Tempo does not zero-pad a trace ID, so a caller still has to.
 			traceID: "2e299711ce47710289dc6640727404f",
@@ -128,14 +123,12 @@ func TestFixturesDecodeWithTypedAttributes(t *testing.T) {
 		{
 			attributeKinds: map[string]int{"bool": 1, "int": 1, "string": 11},
 			file:           responseTypedSearch,
-			serviceStats:   []string{"typeprobe.devex"},
 			spans:          2,
 			traceID:        "f0f0f0f0f0f0f0f0f0f0f0f0f0f01",
 		},
 		{
 			attributeKinds: map[string]int{"string": 13},
 			file:           responseTypedErrors,
-			serviceStats:   []string{"errorprobe.devex"},
 			spans:          2,
 			traceID:        "e0e0e0e0e0e0e0e0e0e0e0e0e0e01",
 		},
@@ -156,7 +149,6 @@ func TestFixturesDecodeWithTypedAttributes(t *testing.T) {
 			trace := response.GetTraces()[0]
 			assert.Equal(c.traceID, trace.GetTraceID())
 			assert.NotZero(trace.GetStartTimeUnixNano(), "quoted uint64")
-			assert.ElementsMatch(c.serviceStats, slices.Collect(maps.Keys(trace.GetServiceStats())))
 
 			// Tempo repeats the deprecated spanSet as the first of spanSets.
 			require.Len(trace.GetSpanSets(), 1)

@@ -23,6 +23,11 @@ GOIMPORTS_VERSION="v0.51.0"
 # Keep in step with the go.opentelemetry.io/proto/otlp version in go.mod: the
 # generated code imports that module instead of carrying its own OTLP types.
 OTEL_PROTO_VERSION="v1.10.0"
+# The Tempo release tracing/tempo/querypb/tempo.proto is trimmed from. Tempo as a
+# whole is AGPL-3.0 and only some directories are Apache-2.0, so this is both a
+# provenance record and what the licence check below asserts.
+TEMPO_VERSION="v2.3.0"
+TEMPO_APACHE_DIR="pkg/tempopb"
 
 GO="${GO:-go}"
 ROOTDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -30,6 +35,30 @@ PROTODIR="${ROOTDIR}/tracing/tempo/querypb"
 
 WORKDIR="$(mktemp -d)"
 trap 'rm -rf "${WORKDIR}"' EXIT
+
+# Tempo is AGPL-3.0 by default and carves out a few directories as Apache-2.0. Only
+# that carve-out makes this copy of its IDL usable here, so assert it rather than
+# trust the note in querypb/README.adoc: a relicence upstream has to stop this script,
+# not be discovered by someone reading a comment. The check is skipped, loudly, when
+# there is no network, because an offline regeneration of already-vetted protos is
+# legitimate; it fails hard only when the answer comes back and the carve-out is gone.
+echo "Checking ${TEMPO_APACHE_DIR} is still Apache-2.0 in Tempo ${TEMPO_VERSION}..."
+LICENSING_URL="https://raw.githubusercontent.com/grafana/tempo/${TEMPO_VERSION}/LICENSING.md"
+if ! curl -sfL --max-time 30 "${LICENSING_URL}" -o "${WORKDIR}/LICENSING.md"; then
+  echo "warning: could not fetch ${LICENSING_URL}; the licence of ${TEMPO_APACHE_DIR} is UNVERIFIED." >&2
+else
+  # Read the directory list under the Apache-2.0 heading and nothing else: the file
+  # also lists directories under other licences, and a plain grep would match those.
+  if ! awk '/^## Apache-2.0/{f=1; next} f && /^## /{exit} f' "${WORKDIR}/LICENSING.md" \
+      | grep -qx "[[:space:]]*${TEMPO_APACHE_DIR}[[:space:]]*"; then
+    echo "fatal: ${TEMPO_APACHE_DIR} is no longer listed under Apache-2.0 in Tempo ${TEMPO_VERSION}." >&2
+    echo "       ${LICENSING_URL} says:" >&2
+    sed 's/^/         /' "${WORKDIR}/LICENSING.md" >&2
+    echo "       Tempo's default licence is AGPL-3.0, which Kiali cannot take. Stopping." >&2
+    exit 1
+  fi
+  echo "  ${TEMPO_APACHE_DIR} is Apache-2.0."
+fi
 
 if [ -z "${PROTOC:-}" ]; then
   echo "Fetching protoc ${PROTOC_VERSION}..."

@@ -65,12 +65,12 @@ message TraceSearchMetadata {
   uint32 durationMs = 5;
   SpanSet spanSet = 6; // deprecated. use SpanSets field below
   repeated SpanSet spanSets = 7;
-  map<string, ServiceStats> serviceStats = 8;
-}
 
-message ServiceStats {
-  uint32 spanCount = 1;
-  uint32 errorCount = 2;
+  // 8 is serviceStats, a map<string, ServiceStats> Tempo 3.x answers with. Kiali
+  // reads none of it, and the copy this is trimmed from is 2.3.0, so adopting one
+  // field of a later release here would make this a version upgrade wearing the
+  // clothes of a regeneration. Reserved so the number cannot be reused.
+  reserved 8;
 }
 
 message SpanSet {
