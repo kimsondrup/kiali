@@ -132,10 +132,15 @@ func (jc TempoGRPCClient) GetServicesList(ctx context.Context) ([]string, error)
 }
 
 // processStream
+// Tempo's streaming search sends a cumulative snapshot of the whole result set in every message, so
+// a trace reported by one message is reported again by each message after it, carrying however many
+// more of its spans have since been matched. The accumulator is therefore keyed by trace ID and the
+// latest snapshot of a trace replaces the earlier one, in the order the traces were first seen.
 func processStream(ctx context.Context, stream tempopb.StreamingQuerier_SearchClient, serviceName string) ([]jaegerModels.Trace, error) {
 	zl := getLoggerFromContextGRPCTempo(ctx)
 
-	tracesMap := []jaegerModels.Trace{}
+	traces := []jaegerModels.Trace{}
+	tracesIndex := map[jaegerModels.TraceID]int{}
 
 	for received, err := stream.Recv(); err != io.EOF; received, err = stream.Recv() {
 		if err != nil {
@@ -150,12 +155,15 @@ func processStream(ctx context.Context, stream tempopb.StreamingQuerier_SearchCl
 			batchTrace, err := converter.ConvertTraceMetadata(*trace, serviceName)
 			if err != nil {
 				zl.Error().Msgf("[gRPC Tempo] Error getting trace detail for %s: %s", trace.TraceID, err.Error())
+			} else if i, found := tracesIndex[batchTrace.TraceID]; found {
+				traces[i] = *batchTrace
 			} else {
-				tracesMap = append(tracesMap, *batchTrace)
+				tracesIndex[batchTrace.TraceID] = len(traces)
+				traces = append(traces, *batchTrace)
 			}
 		}
 	}
-	return tracesMap, nil
+	return traces, nil
 }
 
 // processServices
