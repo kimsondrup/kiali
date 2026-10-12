@@ -16,7 +16,7 @@ import (
 	resourcepb "go.opentelemetry.io/proto/otlp/resource/v1"
 	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
 
-	jaegerModels "github.com/kiali/kiali/tracing/jaeger/model/json"
+	jsonModel "github.com/kiali/kiali/models/tracing/json"
 	"github.com/kiali/kiali/tracing/otel/otlp"
 )
 
@@ -50,13 +50,13 @@ func TestTracesFromOTLPTraceDetail(t *testing.T) {
 	require.Len(traces, 1)
 
 	trace := traces[0]
-	assert.Equal(jaegerModels.TraceID("3fed459787ea5c51070a19c4e6cd3040"), trace.TraceID)
+	assert.Equal(jsonModel.TraceID("3fed459787ea5c51070a19c4e6cd3040"), trace.TraceID)
 	// Three spans over three scope spans of two resources: the waypoint's server span, and the
 	// two the application reports from two different instrumentation libraries.
 	require.Len(trace.Spans, 3)
 	assert.Equal(3, trace.Matched)
-	assert.Equal([]jaegerModels.SpanID{"f6758abc16eb61c0", "3e1860bba5a4ac3d", "e5c939e83dcbc699"},
-		[]jaegerModels.SpanID{trace.Spans[0].SpanID, trace.Spans[1].SpanID, trace.Spans[2].SpanID})
+	assert.Equal([]jsonModel.SpanID{"f6758abc16eb61c0", "3e1860bba5a4ac3d", "e5c939e83dcbc699"},
+		[]jsonModel.SpanID{trace.Spans[0].SpanID, trace.Spans[1].SpanID, trace.Spans[2].SpanID})
 
 	waypoint := trace.Spans[0]
 	assert.Equal("podinfo.tp-ntegzp.svc.cluster.local:9898/*", waypoint.OperationName)
@@ -65,22 +65,22 @@ func TestTracesFromOTLPTraceDetail(t *testing.T) {
 	assert.Empty(waypoint.References)
 
 	// The parent of a span is a CHILD_OF reference, in the same hex the span IDs are in.
-	assert.Equal([]jaegerModels.Reference{{
-		RefType: jaegerModels.ChildOf,
+	assert.Equal([]jsonModel.Reference{{
+		RefType: jsonModel.ChildOf,
 		TraceID: "3fed459787ea5c51070a19c4e6cd3040",
 		SpanID:  "f6758abc16eb61c0",
 	}}, trace.Spans[2].References)
 
-	assert.Equal([]jaegerModels.ProcessID{"p1", "p2"}, processIDs(trace))
+	assert.Equal([]jsonModel.ProcessID{"p1", "p2"}, processIDs(trace))
 	assert.Equal("waypoint.tp-ntegzp", trace.Processes["p1"].ServiceName)
 	assert.Equal("podinfo.tp-ntegzp.svc.cluster.local", trace.Processes["p2"].ServiceName)
 	// The resource attributes other than the service name are the process tags.
-	assert.Contains(trace.Processes["p2"].Tags, jaegerModels.KeyValue{Key: "service.version", Type: jaegerModels.StringType, Value: "6.9.2"})
+	assert.Contains(trace.Processes["p2"].Tags, jsonModel.KeyValue{Key: "service.version", Type: jsonModel.StringType, Value: "6.9.2"})
 
 	// The span of the second scope span is the one carrying the typed attributes, so reading only
 	// the first scope span loses them entirely.
-	assert.Contains(trace.Spans[2].Tags, jaegerModels.KeyValue{Key: "http.response.status_code", Type: jaegerModels.Int64Type, Value: int64(200)})
-	assert.Contains(trace.Spans[2].Tags, jaegerModels.KeyValue{Key: "server.port", Type: jaegerModels.Int64Type, Value: int64(9898)})
+	assert.Contains(trace.Spans[2].Tags, jsonModel.KeyValue{Key: "http.response.status_code", Type: jsonModel.Int64Type, Value: int64(200)})
+	assert.Contains(trace.Spans[2].Tags, jsonModel.KeyValue{Key: "server.port", Type: jsonModel.Int64Type, Value: int64(9898)})
 }
 
 func TestTracesFromOTLPGroupsSpansByTrace(t *testing.T) {
@@ -93,7 +93,7 @@ func TestTracesFromOTLPGroupsSpansByTrace(t *testing.T) {
 	assert.Len(traces, 3)
 	for _, trace := range traces {
 		assert.Len(trace.Spans, 3)
-		assert.Equal([]jaegerModels.ProcessID{"p1", "p2"}, processIDs(trace))
+		assert.Equal([]jsonModel.ProcessID{"p1", "p2"}, processIDs(trace))
 		for _, span := range trace.Spans {
 			assert.Equal(trace.TraceID, span.TraceID)
 			assert.Len(span.TraceID, 32)
@@ -110,20 +110,20 @@ func TestSpanSelectionsAgree(t *testing.T) {
 	const serviceName = "podinfo.tp-otlp-sf2ed7.svc.cluster.local"
 
 	for _, trace := range TracesFromOTLP(decodeAPIV3(t, apiv3SearchHTTP)) {
-		byEmbeddedProcess := []jaegerModels.SpanID{}
+		byEmbeddedProcess := []jsonModel.SpanID{}
 		for _, span := range trace.Spans {
 			if span.Process.ServiceName == serviceName {
 				byEmbeddedProcess = append(byEmbeddedProcess, span.SpanID)
 			}
 		}
 
-		processes := map[jaegerModels.ProcessID]jaegerModels.Process{}
+		processes := map[jsonModel.ProcessID]jsonModel.Process{}
 		for processID, process := range trace.Processes {
 			if process.ServiceName == serviceName {
 				processes[processID] = process
 			}
 		}
-		byProcessTable := []jaegerModels.SpanID{}
+		byProcessTable := []jsonModel.SpanID{}
 		for _, span := range trace.Spans {
 			if _, found := processes[span.ProcessID]; found {
 				byProcessTable = append(byProcessTable, span.SpanID)
@@ -141,19 +141,19 @@ func TestTracesFromOTLPAgreeAcrossProviders(t *testing.T) {
 	trace := TraceFromOTLP(decodeAPIV3(t, apiv3TraceHTTP))
 	require.NotNil(t, trace)
 
-	assert.Equal(t, jaegerModels.TraceID("2132caa05ca64c82454600288b27f3b4"), trace.TraceID)
+	assert.Equal(t, jsonModel.TraceID("2132caa05ca64c82454600288b27f3b4"), trace.TraceID)
 	require.Len(t, trace.Spans, 3)
 	assert.Equal(t, 3, trace.Matched)
-	assert.Equal(t, []jaegerModels.SpanID{"b5333aff2933f5c5", "b307fa7d04e21497", "9af7408b8320f22f"},
-		[]jaegerModels.SpanID{trace.Spans[0].SpanID, trace.Spans[1].SpanID, trace.Spans[2].SpanID})
+	assert.Equal(t, []jsonModel.SpanID{"b5333aff2933f5c5", "b307fa7d04e21497", "9af7408b8320f22f"},
+		[]jsonModel.SpanID{trace.Spans[0].SpanID, trace.Spans[1].SpanID, trace.Spans[2].SpanID})
 
-	assert.Equal(t, []jaegerModels.ProcessID{"p1", "p2"}, processIDs(*trace))
+	assert.Equal(t, []jsonModel.ProcessID{"p1", "p2"}, processIDs(*trace))
 	assert.Equal(t, "waypoint.tp-otlp-sf2ed7", trace.Processes["p1"].ServiceName)
 	assert.Equal(t, "podinfo.tp-otlp-sf2ed7.svc.cluster.local", trace.Processes["p2"].ServiceName)
 
 	// The span of the second scope span is the one carrying the typed attributes, so reading only
 	// the first scope span loses them entirely.
-	assert.Contains(t, trace.Spans[2].Tags, jaegerModels.KeyValue{Key: "http.response.status_code", Type: jaegerModels.Int64Type, Value: int64(200)})
+	assert.Contains(t, trace.Spans[2].Tags, jsonModel.KeyValue{Key: "http.response.status_code", Type: jsonModel.Int64Type, Value: int64(200)})
 }
 
 // TestEveryScopeSpanContributes covers a resource reporting through two instrumentation
@@ -167,8 +167,8 @@ func TestEveryScopeSpanContributes(t *testing.T) {
 
 	traces := TracesFromOTLP(tracesOf(resource))
 	require.Len(t, traces, 1)
-	assert.Equal(t, []jaegerModels.SpanID{"2e6ca056f5fc6fdc", "1122334455667788"},
-		[]jaegerModels.SpanID{traces[0].Spans[0].SpanID, traces[0].Spans[1].SpanID})
+	assert.Equal(t, []jsonModel.SpanID{"2e6ca056f5fc6fdc", "1122334455667788"},
+		[]jsonModel.SpanID{traces[0].Spans[0].SpanID, traces[0].Spans[1].SpanID})
 	// One resource is one process however many scopes it reports through.
 	assert.Len(t, traces[0].Processes, 1)
 }
@@ -213,7 +213,7 @@ func TestSpanWithoutStartTimeIsDropped(t *testing.T) {
 	traces := TracesFromOTLP(tracesOf(resourceSpans("reviews.bookinfo", dated, undated)))
 	require.Len(t, traces, 1)
 	require.Len(t, traces[0].Spans, 1)
-	assert.Equal(t, jaegerModels.SpanID("2e6ca056f5fc6fdc"), traces[0].Spans[0].SpanID)
+	assert.Equal(t, jsonModel.SpanID("2e6ca056f5fc6fdc"), traces[0].Spans[0].SpanID)
 	// The dropped span mints no process either.
 	assert.Len(t, traces[0].Processes, 1)
 
@@ -239,14 +239,14 @@ func TestTypedAttributes(t *testing.T) {
 	require.Len(t, traces, 1)
 	require.Len(t, traces[0].Spans, 1)
 
-	assert.Equal(t, []jaegerModels.KeyValue{
-		{Key: "http.request.method", Type: jaegerModels.StringType, Value: "GET"},
-		{Key: "http.response.status_code", Type: jaegerModels.Int64Type, Value: int64(200)},
-		{Key: "istio.canonical", Type: jaegerModels.BoolType, Value: true},
-		{Key: "sampler.param", Type: jaegerModels.Float64Type, Value: 0.5},
-		{Key: "peer.address", Type: jaegerModels.BinaryType, Value: []byte{0x0a, 0x00, 0x00, 0x01}},
-		{Key: "http.request.header.accept", Type: jaegerModels.StringType, Value: `["*/*"]`},
-		{Key: "nothing", Type: jaegerModels.StringType, Value: ""},
+	assert.Equal(t, []jsonModel.KeyValue{
+		{Key: "http.request.method", Type: jsonModel.StringType, Value: "GET"},
+		{Key: "http.response.status_code", Type: jsonModel.Int64Type, Value: int64(200)},
+		{Key: "istio.canonical", Type: jsonModel.BoolType, Value: true},
+		{Key: "sampler.param", Type: jsonModel.Float64Type, Value: 0.5},
+		{Key: "peer.address", Type: jsonModel.BinaryType, Value: []byte{0x0a, 0x00, 0x00, 0x01}},
+		{Key: "http.request.header.accept", Type: jsonModel.StringType, Value: `["*/*"]`},
+		{Key: "nothing", Type: jsonModel.StringType, Value: ""},
 	}, traces[0].Spans[0].Tags)
 
 	// Bytes keep their type to the edge of the process and reach the UI as the base64 OTLP wrote
@@ -279,7 +279,7 @@ func TestSpanKindTag(t *testing.T) {
 				assert.Empty(t, traces[0].Spans[0].Tags)
 				return
 			}
-			assert.Equal(t, []jaegerModels.KeyValue{{Key: "span.kind", Type: jaegerModels.StringType, Value: expected}},
+			assert.Equal(t, []jsonModel.KeyValue{{Key: "span.kind", Type: jsonModel.StringType, Value: expected}},
 				traces[0].Spans[0].Tags)
 		})
 	}
@@ -290,7 +290,7 @@ func TestSpanKindTag(t *testing.T) {
 // span in ten, and a search answer adds the status attribute, so a converter that reports each
 // of them separately gives the same span three tags keyed "error" with three different types.
 func TestErrorTag(t *testing.T) {
-	errorTag := jaegerModels.KeyValue{Key: "error", Type: jaegerModels.BoolType, Value: true}
+	errorTag := jsonModel.KeyValue{Key: "error", Type: jsonModel.BoolType, Value: true}
 	statusError := attribute("status", &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "error"}})
 	errorString := func(value string) *commonpb.KeyValue {
 		return attribute("error", &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: value}})
@@ -302,43 +302,43 @@ func TestErrorTag(t *testing.T) {
 	cases := map[string]struct {
 		status       *tracepb.Status
 		attributes   []*commonpb.KeyValue
-		expectedTags []jaegerModels.KeyValue
+		expectedTags []jsonModel.KeyValue
 	}{
 		"an error status": {
 			status:       &tracepb.Status{Code: tracepb.Status_STATUS_CODE_ERROR},
-			expectedTags: []jaegerModels.KeyValue{errorTag, statusCodeTag("ERROR")},
+			expectedTags: []jsonModel.KeyValue{errorTag, statusCodeTag("ERROR")},
 		},
 		"a status attribute of error": {
 			attributes:   []*commonpb.KeyValue{statusError},
-			expectedTags: []jaegerModels.KeyValue{errorTag},
+			expectedTags: []jsonModel.KeyValue{errorTag},
 		},
 		"both at once": {
 			status:       &tracepb.Status{Code: tracepb.Status_STATUS_CODE_ERROR},
 			attributes:   []*commonpb.KeyValue{statusError},
-			expectedTags: []jaegerModels.KeyValue{errorTag, statusCodeTag("ERROR")},
+			expectedTags: []jsonModel.KeyValue{errorTag, statusCodeTag("ERROR")},
 		},
 		// Envoy sends both signals at once, so a span that passed the error attribute through would
 		// come out carrying two tags keyed "error" with two different types.
 		"an error attribute and an error status, which is what a proxy sends": {
 			status:       &tracepb.Status{Code: tracepb.Status_STATUS_CODE_ERROR},
 			attributes:   []*commonpb.KeyValue{errorString("true")},
-			expectedTags: []jaegerModels.KeyValue{errorTag, statusCodeTag("ERROR")},
+			expectedTags: []jsonModel.KeyValue{errorTag, statusCodeTag("ERROR")},
 		},
 		"an error attribute alone": {
 			attributes:   []*commonpb.KeyValue{errorString("true")},
-			expectedTags: []jaegerModels.KeyValue{errorTag},
+			expectedTags: []jsonModel.KeyValue{errorTag},
 		},
 		"a Boolean error attribute": {
 			attributes:   []*commonpb.KeyValue{errorBool(true)},
-			expectedTags: []jaegerModels.KeyValue{errorTag},
+			expectedTags: []jsonModel.KeyValue{errorTag},
 		},
 		// The attribute is the only account of WHY the span failed, so it is kept alongside the
 		// flag. Two tags keyed "error" are fine here: the frontend asks tags.some(isErrorTag),
 		// which matches the Boolean, and the message is what a reader needs.
 		"an error attribute carrying the error itself": {
 			attributes: []*commonpb.KeyValue{errorString("upstream connect error")},
-			expectedTags: []jaegerModels.KeyValue{
-				{Key: "error", Type: jaegerModels.StringType, Value: "upstream connect error"},
+			expectedTags: []jsonModel.KeyValue{
+				{Key: "error", Type: jsonModel.StringType, Value: "upstream connect error"},
 				errorTag,
 			},
 		},
@@ -346,47 +346,47 @@ func TestErrorTag(t *testing.T) {
 		// reached the span list before must keep reaching it.
 		"an integer error attribute": {
 			attributes: []*commonpb.KeyValue{attribute("error", &commonpb.AnyValue{Value: &commonpb.AnyValue_IntValue{IntValue: 1}})},
-			expectedTags: []jaegerModels.KeyValue{
-				{Key: "error", Type: jaegerModels.Int64Type, Value: int64(1)},
+			expectedTags: []jsonModel.KeyValue{
+				{Key: "error", Type: jsonModel.Int64Type, Value: int64(1)},
 			},
 		},
 		"an integer error attribute beside an error status": {
 			status:     &tracepb.Status{Code: tracepb.Status_STATUS_CODE_ERROR},
 			attributes: []*commonpb.KeyValue{attribute("error", &commonpb.AnyValue{Value: &commonpb.AnyValue_IntValue{IntValue: 1}})},
-			expectedTags: []jaegerModels.KeyValue{
-				{Key: "error", Type: jaegerModels.Int64Type, Value: int64(1)},
+			expectedTags: []jsonModel.KeyValue{
+				{Key: "error", Type: jsonModel.Int64Type, Value: int64(1)},
 				errorTag,
 				statusCodeTag("ERROR"),
 			},
 		},
 		"a floating-point error attribute": {
 			attributes: []*commonpb.KeyValue{attribute("error", &commonpb.AnyValue{Value: &commonpb.AnyValue_DoubleValue{DoubleValue: 1}})},
-			expectedTags: []jaegerModels.KeyValue{
-				{Key: "error", Type: jaegerModels.Float64Type, Value: float64(1)},
+			expectedTags: []jsonModel.KeyValue{
+				{Key: "error", Type: jsonModel.Float64Type, Value: float64(1)},
 			},
 		},
 		"an error attribute denying the error": {
 			attributes:   []*commonpb.KeyValue{errorString("false")},
-			expectedTags: []jaegerModels.KeyValue{},
+			expectedTags: []jsonModel.KeyValue{},
 		},
 		"a Boolean error attribute denying the error": {
 			attributes:   []*commonpb.KeyValue{errorBool(false)},
-			expectedTags: []jaegerModels.KeyValue{},
+			expectedTags: []jsonModel.KeyValue{},
 		},
 		"an error attribute denying an error the status reports": {
 			status:       &tracepb.Status{Code: tracepb.Status_STATUS_CODE_ERROR},
 			attributes:   []*commonpb.KeyValue{errorBool(false)},
-			expectedTags: []jaegerModels.KeyValue{errorTag, statusCodeTag("ERROR")},
+			expectedTags: []jsonModel.KeyValue{errorTag, statusCodeTag("ERROR")},
 		},
 		"an unset status": {
 			status:       &tracepb.Status{Code: tracepb.Status_STATUS_CODE_UNSET},
-			expectedTags: []jaegerModels.KeyValue{},
+			expectedTags: []jsonModel.KeyValue{},
 		},
 		"a status attribute of something else": {
 			attributes: []*commonpb.KeyValue{
 				attribute("status", &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "ok"}}),
 			},
-			expectedTags: []jaegerModels.KeyValue{{Key: "status", Type: jaegerModels.StringType, Value: "ok"}},
+			expectedTags: []jsonModel.KeyValue{{Key: "status", Type: jsonModel.StringType, Value: "ok"}},
 		},
 	}
 
@@ -425,17 +425,17 @@ func TestProcessTable(t *testing.T) {
 	require.Len(traces, 1)
 
 	trace := traces[0]
-	assert.Equal([]jaegerModels.ProcessID{"p1", "p2", "p3"}, processIDs(trace))
+	assert.Equal([]jsonModel.ProcessID{"p1", "p2", "p3"}, processIDs(trace))
 	assert.Equal("reviews.bookinfo", trace.Processes["p1"].ServiceName)
 	assert.Equal("ratings.bookinfo", trace.Processes["p2"].ServiceName)
 	// A resource with no service name is still named, so a span is never nameless in the UI.
 	assert.Equal(unknownService, trace.Processes["p3"].ServiceName)
 
 	require.Len(trace.Spans, 4)
-	assert.Equal(jaegerModels.ProcessID("p1"), trace.Spans[0].ProcessID)
-	assert.Equal(jaegerModels.ProcessID("p2"), trace.Spans[1].ProcessID)
-	assert.Equal(jaegerModels.ProcessID("p1"), trace.Spans[2].ProcessID)
-	assert.Equal(jaegerModels.ProcessID("p3"), trace.Spans[3].ProcessID)
+	assert.Equal(jsonModel.ProcessID("p1"), trace.Spans[0].ProcessID)
+	assert.Equal(jsonModel.ProcessID("p2"), trace.Spans[1].ProcessID)
+	assert.Equal(jsonModel.ProcessID("p1"), trace.Spans[2].ProcessID)
+	assert.Equal(jsonModel.ProcessID("p3"), trace.Spans[3].ProcessID)
 	for _, span := range trace.Spans {
 		process, found := trace.Processes[span.ProcessID]
 		require.True(found)
@@ -447,7 +447,7 @@ func TestProcessTable(t *testing.T) {
 func TestTraceFromOTLP(t *testing.T) {
 	trace := TraceFromOTLP(decode(t, tempoTypedAttrs))
 	require.NotNil(t, trace)
-	assert.Equal(t, jaegerModels.TraceID("4ce7f3617b6b969cad880718687d652d"), trace.TraceID)
+	assert.Equal(t, jsonModel.TraceID("4ce7f3617b6b969cad880718687d652d"), trace.TraceID)
 	assert.Len(t, trace.Spans, 2)
 
 	// A payload holding no span is no trace. Whether the backend does not have it or answered
@@ -469,15 +469,15 @@ func TestTraceFromOTLPReportsOneTraceOnly(t *testing.T) {
 
 	trace := TraceFromOTLP(tracesOf(resourceSpans("reviews.bookinfo", asked, other)))
 	require.NotNil(t, trace)
-	assert.Equal(t, jaegerModels.TraceID("727a0d200236314473666c051e6f65f4"), trace.TraceID)
+	assert.Equal(t, jsonModel.TraceID("727a0d200236314473666c051e6f65f4"), trace.TraceID)
 	require.Len(t, trace.Spans, 1)
-	assert.Equal(t, jaegerModels.SpanID("2e6ca056f5fc6fdc"), trace.Spans[0].SpanID)
+	assert.Equal(t, jsonModel.SpanID("2e6ca056f5fc6fdc"), trace.Spans[0].SpanID)
 }
 
 // decodeAPIV3 reads a body api_v3 serves over HTTP, which renders its IDs as hex under an
 // envelope of its own.
-func statusCodeTag(code string) jaegerModels.KeyValue {
-	return jaegerModels.KeyValue{Key: "otel.status_code", Type: jaegerModels.StringType, Value: code}
+func statusCodeTag(code string) jsonModel.KeyValue {
+	return jsonModel.KeyValue{Key: "otel.status_code", Type: jsonModel.StringType, Value: code}
 }
 
 func decodeAPIV3(t *testing.T, path string) *tracepb.TracesData {
@@ -501,10 +501,10 @@ func decode(t *testing.T, path string) *tracepb.TracesData {
 }
 
 // processIDs are the keys of the trace's process table, in minting order.
-func processIDs(trace jaegerModels.Trace) []jaegerModels.ProcessID {
-	ids := []jaegerModels.ProcessID{}
+func processIDs(trace jsonModel.Trace) []jsonModel.ProcessID {
+	ids := []jsonModel.ProcessID{}
 	for i := 1; i <= len(trace.Processes); i++ {
-		id := jaegerModels.ProcessID("p" + strconv.Itoa(i))
+		id := jsonModel.ProcessID("p" + strconv.Itoa(i))
 		if _, found := trace.Processes[id]; found {
 			ids = append(ids, id)
 		}
@@ -545,42 +545,42 @@ func attribute(key string, value *commonpb.AnyValue) *commonpb.KeyValue {
 func TestStatusTags(t *testing.T) {
 	cases := map[string]struct {
 		status *tracepb.Status
-		want   []jaegerModels.KeyValue
+		want   []jsonModel.KeyValue
 	}{
 		"an error with a message": {
 			status: &tracepb.Status{Code: tracepb.Status_STATUS_CODE_ERROR, Message: "upstream connect error"},
-			want: []jaegerModels.KeyValue{
-				{Key: "error", Type: jaegerModels.BoolType, Value: true},
-				{Key: "otel.status_code", Type: jaegerModels.StringType, Value: "ERROR"},
-				{Key: "otel.status_description", Type: jaegerModels.StringType, Value: "upstream connect error"},
+			want: []jsonModel.KeyValue{
+				{Key: "error", Type: jsonModel.BoolType, Value: true},
+				{Key: "otel.status_code", Type: jsonModel.StringType, Value: "ERROR"},
+				{Key: "otel.status_description", Type: jsonModel.StringType, Value: "upstream connect error"},
 			},
 		},
 		"an error with no message": {
 			status: &tracepb.Status{Code: tracepb.Status_STATUS_CODE_ERROR},
-			want: []jaegerModels.KeyValue{
-				{Key: "error", Type: jaegerModels.BoolType, Value: true},
-				{Key: "otel.status_code", Type: jaegerModels.StringType, Value: "ERROR"},
+			want: []jsonModel.KeyValue{
+				{Key: "error", Type: jsonModel.BoolType, Value: true},
+				{Key: "otel.status_code", Type: jsonModel.StringType, Value: "ERROR"},
 			},
 		},
 		// OK is a status a span set deliberately, so it is reported, but it is not a failure and
 		// gets no error tag.
 		"a deliberate OK": {
 			status: &tracepb.Status{Code: tracepb.Status_STATUS_CODE_OK},
-			want: []jaegerModels.KeyValue{
-				{Key: "otel.status_code", Type: jaegerModels.StringType, Value: "OK"},
+			want: []jsonModel.KeyValue{
+				{Key: "otel.status_code", Type: jsonModel.StringType, Value: "OK"},
 			},
 		},
 		"unset, which must not be reported": {
 			status: &tracepb.Status{Code: tracepb.Status_STATUS_CODE_UNSET},
-			want:   []jaegerModels.KeyValue{},
+			want:   []jsonModel.KeyValue{},
 		},
 		// A message with no code is not a status the mapping names, and the code is what it keys
 		// the report on.
 		"a message with no code": {
 			status: &tracepb.Status{Message: "nothing to go on"},
-			want:   []jaegerModels.KeyValue{},
+			want:   []jsonModel.KeyValue{},
 		},
-		"no status at all": {status: nil, want: []jaegerModels.KeyValue{}},
+		"no status at all": {status: nil, want: []jsonModel.KeyValue{}},
 	}
 
 	for name, tc := range cases {
@@ -602,28 +602,28 @@ func TestStatusTags(t *testing.T) {
 func TestScopeTags(t *testing.T) {
 	cases := map[string]struct {
 		scope *commonpb.InstrumentationScope
-		want  []jaegerModels.KeyValue
+		want  []jsonModel.KeyValue
 	}{
 		// Measured on every waypoint span of a live Istio mesh, read back from both Tempo and
 		// Jaeger: the version Envoy reports is its whole build string, not a bare number.
 		"a name and a version, as Envoy exports them": {
 			scope: &commonpb.InstrumentationScope{Name: "envoy", Version: "3bb16354647d089b9a79020c9fc86cbbc5fcf84b/1.39.2-dev/Clean/RELEASE/BoringSSL"},
-			want: []jaegerModels.KeyValue{
-				{Key: "otel.scope.name", Type: jaegerModels.StringType, Value: "envoy"},
-				{Key: "otel.scope.version", Type: jaegerModels.StringType, Value: "3bb16354647d089b9a79020c9fc86cbbc5fcf84b/1.39.2-dev/Clean/RELEASE/BoringSSL"},
+			want: []jsonModel.KeyValue{
+				{Key: "otel.scope.name", Type: jsonModel.StringType, Value: "envoy"},
+				{Key: "otel.scope.version", Type: jsonModel.StringType, Value: "3bb16354647d089b9a79020c9fc86cbbc5fcf84b/1.39.2-dev/Clean/RELEASE/BoringSSL"},
 			},
 		},
 		"a name alone": {
 			scope: &commonpb.InstrumentationScope{Name: "agentgateway"},
-			want: []jaegerModels.KeyValue{
-				{Key: "otel.scope.name", Type: jaegerModels.StringType, Value: "agentgateway"},
+			want: []jsonModel.KeyValue{
+				{Key: "otel.scope.name", Type: jsonModel.StringType, Value: "agentgateway"},
 			},
 		},
 		// A scope with neither field set, which is the shape the 2023 Tempo capture in
 		// tracing/tracingtest/responseTrace.json carries on all six of its resources. There is
 		// nothing to report it as.
-		"a scope with neither field set": {scope: &commonpb.InstrumentationScope{}, want: []jaegerModels.KeyValue{}},
-		"no scope at all":                {scope: nil, want: []jaegerModels.KeyValue{}},
+		"a scope with neither field set": {scope: &commonpb.InstrumentationScope{}, want: []jsonModel.KeyValue{}},
+		"no scope at all":                {scope: nil, want: []jsonModel.KeyValue{}},
 	}
 
 	for name, tc := range cases {
@@ -653,17 +653,17 @@ func TestEveryScopeCarriesItsOwnTags(t *testing.T) {
 	// Both spans belong to the same resource, so the scope is the only thing telling them apart.
 	require.Equal(t, trace.Spans[1].ProcessID, trace.Spans[2].ProcessID)
 
-	assert.Contains(t, trace.Spans[0].Tags, jaegerModels.KeyValue{Key: "otel.scope.name", Type: jaegerModels.StringType, Value: "envoy"})
-	assert.Contains(t, trace.Spans[1].Tags, jaegerModels.KeyValue{
-		Key: "otel.scope.name", Type: jaegerModels.StringType,
+	assert.Contains(t, trace.Spans[0].Tags, jsonModel.KeyValue{Key: "otel.scope.name", Type: jsonModel.StringType, Value: "envoy"})
+	assert.Contains(t, trace.Spans[1].Tags, jsonModel.KeyValue{
+		Key: "otel.scope.name", Type: jsonModel.StringType,
 		Value: "github.com/stefanprodan/podinfo/pkg/api",
 	})
-	assert.Contains(t, trace.Spans[1].Tags, jaegerModels.KeyValue{Key: "otel.scope.version", Type: jaegerModels.StringType, Value: "6.9.2"})
-	assert.Contains(t, trace.Spans[2].Tags, jaegerModels.KeyValue{
-		Key: "otel.scope.name", Type: jaegerModels.StringType,
+	assert.Contains(t, trace.Spans[1].Tags, jsonModel.KeyValue{Key: "otel.scope.version", Type: jsonModel.StringType, Value: "6.9.2"})
+	assert.Contains(t, trace.Spans[2].Tags, jsonModel.KeyValue{
+		Key: "otel.scope.name", Type: jsonModel.StringType,
 		Value: "go.opentelemetry.io/contrib/instrumentation/github.com/gorilla/mux/otelmux",
 	})
-	assert.Contains(t, trace.Spans[2].Tags, jaegerModels.KeyValue{Key: "otel.scope.version", Type: jaegerModels.StringType, Value: "0.63.0"})
+	assert.Contains(t, trace.Spans[2].Tags, jsonModel.KeyValue{Key: "otel.scope.version", Type: jsonModel.StringType, Value: "0.63.0"})
 }
 
 // TestNonFiniteDoubles covers a double that JSON has no literal for. Left as a float64, a bare
@@ -693,12 +693,12 @@ func TestNonFiniteDoubles(t *testing.T) {
 	require.Len(t, traces, 1)
 	require.Len(t, traces[0].Spans, 1)
 
-	assert.Equal(t, []jaegerModels.KeyValue{
-		{Key: "queue.ratio", Type: jaegerModels.StringType, Value: "NaN"},
-		{Key: "sampler.param", Type: jaegerModels.Float64Type, Value: 0.25},
+	assert.Equal(t, []jsonModel.KeyValue{
+		{Key: "queue.ratio", Type: jsonModel.StringType, Value: "NaN"},
+		{Key: "sampler.param", Type: jsonModel.Float64Type, Value: 0.25},
 		// The sibling is the point: the infinity costs its own element and nothing else.
-		{Key: "latencies", Type: jaegerModels.StringType, Value: `[1.5,"+Inf"]`},
-		{Key: "budget", Type: jaegerModels.StringType, Value: `{"ok":7,"over":"-Inf"}`},
+		{Key: "latencies", Type: jsonModel.StringType, Value: `[1.5,"+Inf"]`},
+		{Key: "budget", Type: jsonModel.StringType, Value: `{"ok":7,"over":"-Inf"}`},
 	}, traces[0].Spans[0].Tags)
 
 	// The whole trace serialises, which is what one raw NaN takes away.
@@ -734,8 +734,8 @@ func TestUnreadAttributeVariant(t *testing.T) {
 
 	tags := traces[0].Spans[0].Tags
 	require.Len(t, tags, 4)
-	assert.Equal(t, jaegerModels.KeyValue{Key: "probe.strindex", Type: jaegerModels.StringType, Value: ""}, tags[0])
-	assert.Equal(t, jaegerModels.KeyValue{Key: "http.request.method", Type: jaegerModels.StringType, Value: "GET"}, tags[1])
+	assert.Equal(t, jsonModel.KeyValue{Key: "probe.strindex", Type: jsonModel.StringType, Value: ""}, tags[0])
+	assert.Equal(t, jsonModel.KeyValue{Key: "http.request.method", Type: jsonModel.StringType, Value: "GET"}, tags[1])
 
 	text := logged.String()
 	assert.Equal(t, 1, strings.Count(text, "Could not read the value of attribute(s)"), text)
@@ -756,17 +756,17 @@ func TestTracesFromOTLPAgentGatewayTrace(t *testing.T) {
 	require.NotNil(trace)
 	require.Len(trace.Spans, 4)
 
-	assert.Equal(jaegerModels.TraceID("60bad1536be1cd2f5b39bf02883c9656"), trace.TraceID)
-	assert.Equal([]jaegerModels.ProcessID{"p1", "p2"}, processIDs(*trace))
+	assert.Equal(jsonModel.TraceID("60bad1536be1cd2f5b39bf02883c9656"), trace.TraceID)
+	assert.Equal([]jsonModel.ProcessID{"p1", "p2"}, processIDs(*trace))
 	assert.Equal("api-gateway.agentgateway-system", trace.Processes["p1"].ServiceName)
 	assert.Equal("orders-api.api-orders", trace.Processes["p2"].ServiceName)
 
-	assert.Contains(trace.Spans[0].Tags, jaegerModels.KeyValue{Key: "span.kind", Type: jaegerModels.StringType, Value: "server"})
-	assert.Contains(trace.Spans[1].Tags, jaegerModels.KeyValue{Key: "span.kind", Type: jaegerModels.StringType, Value: "client"})
-	assert.Contains(trace.Spans[1].Tags, jaegerModels.KeyValue{Key: "grpc.status", Type: jaegerModels.Int64Type, Value: int64(0)})
-	assert.Contains(trace.Spans[3].Tags, jaegerModels.KeyValue{Key: "otel.scope.version", Type: jaegerModels.StringType, Value: "1.31.6"})
-	assert.Contains(trace.Spans[3].Tags, jaegerModels.KeyValue{
-		Key: "@jaeger@warnings", Type: jaegerModels.StringType,
+	assert.Contains(trace.Spans[0].Tags, jsonModel.KeyValue{Key: "span.kind", Type: jsonModel.StringType, Value: "server"})
+	assert.Contains(trace.Spans[1].Tags, jsonModel.KeyValue{Key: "span.kind", Type: jsonModel.StringType, Value: "client"})
+	assert.Contains(trace.Spans[1].Tags, jsonModel.KeyValue{Key: "grpc.status", Type: jsonModel.Int64Type, Value: int64(0)})
+	assert.Contains(trace.Spans[3].Tags, jsonModel.KeyValue{Key: "otel.scope.version", Type: jsonModel.StringType, Value: "1.31.6"})
+	assert.Contains(trace.Spans[3].Tags, jsonModel.KeyValue{
+		Key: "@jaeger@warnings", Type: jsonModel.StringType,
 		Value: `["clock skew adjustment disabled; not applying calculated delta of 408.5µs","clock skew adjustment disabled; not applying calculated delta of 408.5µs","clock skew adjustment disabled; not applying calculated delta of 408.5µs"]`,
 	})
 }

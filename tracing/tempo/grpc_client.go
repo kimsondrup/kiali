@@ -12,7 +12,7 @@ import (
 
 	"github.com/kiali/kiali/config"
 	"github.com/kiali/kiali/models"
-	jaegerModels "github.com/kiali/kiali/tracing/jaeger/model/json"
+	jsonModel "github.com/kiali/kiali/models/tracing/json"
 	"github.com/kiali/kiali/tracing/otel/model/converter"
 	"github.com/kiali/kiali/tracing/tempo/querypb"
 )
@@ -156,11 +156,11 @@ func (jc TempoGRPCClient) GetServicesList(ctx context.Context) ([]string, error)
 // A read that times out reports what arrived rather than failing. Because the messages are diffs,
 // that drops whatever the later ones carried, so it is a known defect left for the change that
 // fixes it.
-func processStream(ctx context.Context, stream querypb.StreamingQuerier_SearchClient, serviceName string) ([]jaegerModels.Trace, error) {
+func processStream(ctx context.Context, stream querypb.StreamingQuerier_SearchClient, serviceName string) ([]jsonModel.Trace, error) {
 	zl := getLoggerFromContextGRPCTempo(ctx)
 
-	order := []jaegerModels.TraceID{}
-	latest := map[jaegerModels.TraceID]jaegerModels.Trace{}
+	order := []jsonModel.TraceID{}
+	latest := map[jsonModel.TraceID]jsonModel.Trace{}
 
 	for received, err := stream.Recv(); err != io.EOF; received, err = stream.Recv() {
 		if err != nil {
@@ -180,7 +180,7 @@ func processStream(ctx context.Context, stream querypb.StreamingQuerier_SearchCl
 		}
 	}
 
-	traces := make([]jaegerModels.Trace, 0, len(order))
+	traces := make([]jsonModel.Trace, 0, len(order))
 	for _, traceID := range order {
 		traces = append(traces, latest[traceID])
 	}

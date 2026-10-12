@@ -6,7 +6,7 @@ import (
 	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
 
 	"github.com/kiali/kiali/log"
-	jaegerModels "github.com/kiali/kiali/tracing/jaeger/model/json"
+	jsonModel "github.com/kiali/kiali/models/tracing/json"
 	"github.com/kiali/kiali/tracing/tempo/querypb"
 )
 
@@ -19,17 +19,17 @@ import (
 // itself reports once asked for the trace, and an unpadded search answer makes one trace into two
 // for everything that compares the two: the scatter plot draws the selected trace twice and never
 // marks it as selected.
-func ConvertId(id string) jaegerModels.TraceID {
+func ConvertId(id string) jsonModel.TraceID {
 	const width = 32
 	if len(id) < width {
 		id = strings.Repeat("0", width-len(id)) + id
 	}
-	return jaegerModels.TraceID(id)
+	return jsonModel.TraceID(id)
 }
 
 // convertSpanId
-func convertSpanId(id string) jaegerModels.SpanID {
-	return jaegerModels.SpanID(id)
+func convertSpanId(id string) jsonModel.SpanID {
+	return jsonModel.SpanID(id)
 }
 
 // SearchTrace assembles the Jaeger-shaped trace a Tempo search result becomes. Both of Tempo's
@@ -40,15 +40,15 @@ func convertSpanId(id string) jaegerModels.SpanID {
 // or map serialises as JSON null, and the frontend's transformTraceData reads all three without
 // checking, so a trace with no spans would take the Traces tab down with a TypeError instead of
 // rendering as an empty trace.
-func SearchTrace(traceID jaegerModels.TraceID, spans []jaegerModels.Span, matched int) jaegerModels.Trace {
+func SearchTrace(traceID jsonModel.TraceID, spans []jsonModel.Span, matched int) jsonModel.Trace {
 	if spans == nil {
-		spans = []jaegerModels.Span{}
+		spans = []jsonModel.Span{}
 	}
-	return jaegerModels.Trace{
+	return jsonModel.Trace{
 		TraceID:   traceID,
 		Spans:     spans,
 		Matched:   matched,
-		Processes: map[jaegerModels.ProcessID]jaegerModels.Process{},
+		Processes: map[jsonModel.ProcessID]jsonModel.Process{},
 		Warnings:  []string{},
 	}
 }
@@ -59,10 +59,10 @@ func SearchTrace(traceID jaegerModels.TraceID, spans []jaegerModels.Span, matche
 //
 // The metadata is taken by pointer because a generated message carries a mutex, so copying one is
 // what go vet's copylocks reports.
-func ConvertTraceMetadata(trace *querypb.TraceSearchMetadata, serviceName string) *jaegerModels.Trace {
+func ConvertTraceMetadata(trace *querypb.TraceSearchMetadata, serviceName string) *jsonModel.Trace {
 	traceID := ConvertId(trace.GetTraceID())
 
-	var spans []jaegerModels.Span
+	var spans []jsonModel.Span
 	// A matched trace carries the spans that matched, and a trace reporting only its statistics
 	// carries no span set at all. The field is a pointer, so reaching into it is a nil
 	// dereference rather than an empty range.
@@ -83,14 +83,14 @@ func ConvertTraceMetadata(trace *querypb.TraceSearchMetadata, serviceName string
 
 // convertOtelSpan reports one span matched by Tempo's search API as a Jaeger span. The second
 // return is false for a span the caller must drop.
-func convertOtelSpan(span *querypb.Span, serviceName string, traceID jaegerModels.TraceID, rootTrace string) (jaegerModels.Span, bool) {
+func convertOtelSpan(span *querypb.Span, serviceName string, traceID jsonModel.TraceID, rootTrace string) (jsonModel.Span, bool) {
 	// A span with no start time is not placed anywhere on a timeline, and reporting it with a
 	// start time of zero places it at the Unix epoch instead - in the trace list, in the heatmap
 	// and in the Metrics-tab span overlay, all of which read this path.
 	if span.GetStartTimeUnixNano() == 0 {
 		log.Errorf("Span [%s] of trace [%s] on service [%s] has no start time. Skipping span",
 			span.GetSpanID(), traceID, serviceName)
-		return jaegerModels.Span{}, false
+		return jsonModel.Span{}, false
 	}
 
 	// Tempo computes this duration itself, as an unsigned subtraction, so a span whose end
@@ -114,19 +114,19 @@ func convertOtelSpan(span *querypb.Span, serviceName string, traceID jaegerModel
 	}
 
 	spanID := convertSpanId(span.GetSpanID())
-	modelSpan := jaegerModels.Span{
+	modelSpan := jsonModel.Span{
 		SpanID:    spanID,
 		TraceID:   traceID,
 		Duration:  duration / 1000, // Provided in ns, Jaeger uses ms
 		StartTime: span.GetStartTimeUnixNano() / 1000,
 		// No more mapped data
 		Flags:         0,
-		References:    []jaegerModels.Reference{},
+		References:    []jsonModel.Reference{},
 		Tags:          convertAttributes(span.GetAttributes(), spanID),
-		Logs:          []jaegerModels.Log{},
+		Logs:          []jsonModel.Log{},
 		OperationName: operationName,
 		ProcessID:     "",
-		Process:       &jaegerModels.Process{Tags: []jaegerModels.KeyValue{}, ServiceName: serviceName},
+		Process:       &jsonModel.Process{Tags: []jsonModel.KeyValue{}, ServiceName: serviceName},
 		Warnings:      []string{},
 	}
 
@@ -141,12 +141,12 @@ func convertOtelSpan(span *querypb.Span, serviceName string, traceID jaegerModel
 // There is no status to report alongside them: Tempo writes no span-level status on this path,
 // and the status it does report arrives as the "status" attribute below. The span status is a
 // real thing on the trace detail path, where the response is OTLP and statusTags reads it.
-func convertAttributes(attributes []*commonpb.KeyValue, spanID jaegerModels.SpanID) []jaegerModels.KeyValue {
-	var tags []jaegerModels.KeyValue
+func convertAttributes(attributes []*commonpb.KeyValue, spanID jsonModel.SpanID) []jsonModel.KeyValue {
+	var tags []jsonModel.KeyValue
 	var unread []string
 	for _, atb := range attributes {
 		if atb.GetKey() == "status" && atb.GetValue().GetStringValue() == "error" {
-			tags = append(tags, jaegerModels.KeyValue{Key: "error", Value: true, Type: jaegerModels.BoolType})
+			tags = append(tags, jsonModel.KeyValue{Key: "error", Value: true, Type: jsonModel.BoolType})
 			continue
 		}
 		tag, cannotRead := keyValueFromAttribute(atb)

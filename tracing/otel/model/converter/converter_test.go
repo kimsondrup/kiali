@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
 
-	jaegerModels "github.com/kiali/kiali/tracing/jaeger/model/json"
+	jsonModel "github.com/kiali/kiali/models/tracing/json"
 	"github.com/kiali/kiali/tracing/tempo/querypb"
 )
 
@@ -20,7 +20,7 @@ func TestConvertId(t *testing.T) {
 
 	id := getId()
 	jaegerId := ConvertId(id)
-	assert.Equal(jaegerModels.TraceID(id), jaegerId)
+	assert.Equal(jsonModel.TraceID(id), jaegerId)
 }
 
 // TestConvertIdPadsTempoId covers the trace IDs Tempo answers a search with, which it strips the
@@ -34,7 +34,7 @@ func TestConvertIdPadsTempoId(t *testing.T) {
 		"a 64 bit id, zero extended": {id: "631f6654cc518265", expected: "0000000000000000631f6654cc518265"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			assert.Equal(t, jaegerModels.TraceID(tc.expected), ConvertId(tc.id))
+			assert.Equal(t, jsonModel.TraceID(tc.expected), ConvertId(tc.id))
 		})
 	}
 }
@@ -44,7 +44,7 @@ func TestConvertSpanId(t *testing.T) {
 
 	id := getId()
 	jaegerId := convertSpanId(id)
-	assert.Equal(jaegerModels.SpanID(id), jaegerId)
+	assert.Equal(jsonModel.SpanID(id), jaegerId)
 }
 
 // TestConvertTraceMetadataDuration covers the duration of a span matched by Tempo's search API,
@@ -115,7 +115,7 @@ func TestTraceIdIsTheSameOnBothTempoTransports(t *testing.T) {
 
 			converted := ConvertTraceMetadata(trace, "reviews.bookinfo")
 			require.Len(t, converted.Spans, 1)
-			assert.Equal(t, jaegerModels.TraceID(tc.expected), converted.TraceID)
+			assert.Equal(t, jsonModel.TraceID(tc.expected), converted.TraceID)
 			assert.Equal(t, converted.TraceID, converted.Spans[0].TraceID)
 		})
 	}
@@ -181,7 +181,7 @@ func TestConvertTraceMetadataWithoutSpanSet(t *testing.T) {
 		RootTraceName: "reviews.bookinfo.svc.cluster.local:9080/*",
 	}, "reviews.bookinfo")
 	require.NotNil(t, converted)
-	assert.Equal(t, jaegerModels.TraceID("cafe9bc0903e18f6b914752f8ee577a5"), converted.TraceID)
+	assert.Equal(t, jsonModel.TraceID("cafe9bc0903e18f6b914752f8ee577a5"), converted.TraceID)
 	assert.Equal(t, 0, converted.Matched)
 
 	// Both assertions are needed: a nil slice or map satisfies Empty as readily as an empty one,
@@ -213,37 +213,37 @@ func TestConvertAttributes(t *testing.T) {
 	cases := map[string]struct {
 		value     *commonpb.AnyValue
 		wantValue any
-		wantType  jaegerModels.ValueType
+		wantType  jsonModel.ValueType
 	}{
 		"a string": {
 			value:     &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: "HTTP/1.1"}},
-			wantValue: "HTTP/1.1", wantType: jaegerModels.StringType,
+			wantValue: "HTTP/1.1", wantType: jsonModel.StringType,
 		},
 		"an int": {
 			value:     &commonpb.AnyValue{Value: &commonpb.AnyValue_IntValue{IntValue: 503}},
-			wantValue: int64(503), wantType: jaegerModels.Int64Type,
+			wantValue: int64(503), wantType: jsonModel.Int64Type,
 		},
 		"a bool": {
 			value:     &commonpb.AnyValue{Value: &commonpb.AnyValue_BoolValue{BoolValue: true}},
-			wantValue: true, wantType: jaegerModels.BoolType,
+			wantValue: true, wantType: jsonModel.BoolType,
 		},
 		"a double": {
 			value:     &commonpb.AnyValue{Value: &commonpb.AnyValue_DoubleValue{DoubleValue: 1.5}},
-			wantValue: 1.5, wantType: jaegerModels.Float64Type,
+			wantValue: 1.5, wantType: jsonModel.Float64Type,
 		},
 		"a double that is not a number": {
 			value:     &commonpb.AnyValue{Value: &commonpb.AnyValue_DoubleValue{DoubleValue: math.NaN()}},
-			wantValue: "NaN", wantType: jaegerModels.StringType,
+			wantValue: "NaN", wantType: jsonModel.StringType,
 		},
 		"bytes": {
 			value:     &commonpb.AnyValue{Value: &commonpb.AnyValue_BytesValue{BytesValue: []byte{10, 0, 0, 1}}},
-			wantValue: []byte{10, 0, 0, 1}, wantType: jaegerModels.BinaryType,
+			wantValue: []byte{10, 0, 0, 1}, wantType: jsonModel.BinaryType,
 		},
 		"an array": {
 			value: &commonpb.AnyValue{Value: &commonpb.AnyValue_ArrayValue{ArrayValue: &commonpb.ArrayValue{
 				Values: []*commonpb.AnyValue{{Value: &commonpb.AnyValue_StringValue{StringValue: "*/*"}}},
 			}}},
-			wantValue: `["*/*"]`, wantType: jaegerModels.StringType,
+			wantValue: `["*/*"]`, wantType: jsonModel.StringType,
 		},
 		"an array holding a double that is not a number": {
 			value: &commonpb.AnyValue{Value: &commonpb.AnyValue_ArrayValue{ArrayValue: &commonpb.ArrayValue{
@@ -252,23 +252,23 @@ func TestConvertAttributes(t *testing.T) {
 					{Value: &commonpb.AnyValue_DoubleValue{DoubleValue: math.Inf(1)}},
 				},
 			}}},
-			wantValue: `[1.5,"+Inf"]`, wantType: jaegerModels.StringType,
+			wantValue: `[1.5,"+Inf"]`, wantType: jsonModel.StringType,
 		},
 		"a map": {
 			value: &commonpb.AnyValue{Value: &commonpb.AnyValue_KvlistValue{KvlistValue: &commonpb.KeyValueList{
 				Values: []*commonpb.KeyValue{{Key: "k", Value: &commonpb.AnyValue{Value: &commonpb.AnyValue_IntValue{IntValue: 7}}}},
 			}}},
-			wantValue: `{"k":7}`, wantType: jaegerModels.StringType,
+			wantValue: `{"k":7}`, wantType: jsonModel.StringType,
 		},
-		"no variant set":  {value: &commonpb.AnyValue{}, wantValue: "", wantType: jaegerModels.StringType},
-		"no value at all": {wantValue: "", wantType: jaegerModels.StringType},
+		"no variant set":  {value: &commonpb.AnyValue{}, wantValue: "", wantType: jsonModel.StringType},
+		"no value at all": {wantValue: "", wantType: jsonModel.StringType},
 	}
 
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
 			tags := convertAttributes([]*commonpb.KeyValue{{Key: "k", Value: tc.value}}, "2e6ca056f5fc6fdc")
 			require.Len(t, tags, 1)
-			assert.Equal(t, jaegerModels.KeyValue{Key: "k", Value: tc.wantValue, Type: tc.wantType}, tags[0])
+			assert.Equal(t, jsonModel.KeyValue{Key: "k", Value: tc.wantValue, Type: tc.wantType}, tags[0])
 		})
 	}
 }
@@ -282,11 +282,11 @@ func TestConvertAttributesStatus(t *testing.T) {
 	}
 
 	failed := convertAttributes([]*commonpb.KeyValue{{Key: "status", Value: text("error")}}, "2e6ca056f5fc6fdc")
-	assert.Equal(t, []jaegerModels.KeyValue{{Key: "error", Value: true, Type: jaegerModels.BoolType}}, failed)
+	assert.Equal(t, []jsonModel.KeyValue{{Key: "error", Value: true, Type: jsonModel.BoolType}}, failed)
 
 	for _, value := range []string{"ok", "unset"} {
 		tags := convertAttributes([]*commonpb.KeyValue{{Key: "status", Value: text(value)}}, "2e6ca056f5fc6fdc")
-		assert.Equal(t, []jaegerModels.KeyValue{{Key: "status", Value: value, Type: jaegerModels.StringType}}, tags)
+		assert.Equal(t, []jsonModel.KeyValue{{Key: "status", Value: value, Type: jsonModel.StringType}}, tags)
 	}
 }
 
@@ -311,8 +311,8 @@ func TestConvertAttributesNamesAnUnreadVariant(t *testing.T) {
 	}, "2e6ca056f5fc6fdc")
 
 	require.Len(t, tags, 4)
-	assert.Equal(t, jaegerModels.KeyValue{Key: "probe.strindex", Value: "", Type: jaegerModels.StringType}, tags[0])
-	assert.Equal(t, jaegerModels.KeyValue{Key: "http.method", Value: "GET", Type: jaegerModels.StringType}, tags[1])
+	assert.Equal(t, jsonModel.KeyValue{Key: "probe.strindex", Value: "", Type: jsonModel.StringType}, tags[0])
+	assert.Equal(t, jsonModel.KeyValue{Key: "http.method", Value: "GET", Type: jsonModel.StringType}, tags[1])
 
 	text := logged.String()
 	assert.Equal(t, 1, strings.Count(text, "Could not read the value of attribute(s)"), text)
@@ -341,7 +341,7 @@ func TestConvertTraceMetadataNoStartTime(t *testing.T) {
 	// The span that can be placed on a timeline is kept, so one unplaceable span does not cost
 	// the trace the rest of its spans.
 	require.Len(t, converted.Spans, 1)
-	assert.Equal(t, jaegerModels.SpanID("e5c939e83dcbc699"), converted.Spans[0].SpanID)
+	assert.Equal(t, jsonModel.SpanID("e5c939e83dcbc699"), converted.Spans[0].SpanID)
 }
 
 func getId() string {

@@ -12,8 +12,8 @@ import (
 	"github.com/kiali/kiali/config"
 	"github.com/kiali/kiali/kubernetes/kubetest"
 	"github.com/kiali/kiali/models"
+	jsonModel "github.com/kiali/kiali/models/tracing/json"
 	"github.com/kiali/kiali/tracing"
-	jaegerModels "github.com/kiali/kiali/tracing/jaeger/model/json"
 )
 
 type fakeTracingClient struct {
@@ -58,13 +58,13 @@ func TestExecute_Validation(t *testing.T) {
 }
 
 func TestBuildHierarchy_EmptyTrace(t *testing.T) {
-	trace := jaegerModels.Trace{Spans: nil}
+	trace := jsonModel.Trace{Spans: nil}
 	totalMs, root := buildHierarchy(trace)
 	if totalMs != 0 || root != nil {
 		t.Errorf("empty trace: expected totalMs=0 and root=nil, got totalMs=%f root=%+v", totalMs, root)
 	}
 
-	trace2 := jaegerModels.Trace{Spans: []jaegerModels.Span{}}
+	trace2 := jsonModel.Trace{Spans: []jsonModel.Span{}}
 	totalMs2, root2 := buildHierarchy(trace2)
 	if totalMs2 != 0 || root2 != nil {
 		t.Errorf("empty spans: expected totalMs=0 and root=nil, got totalMs=%f root=%+v", totalMs2, root2)
@@ -72,18 +72,18 @@ func TestBuildHierarchy_EmptyTrace(t *testing.T) {
 }
 
 func TestBuildHierarchy_SingleSpan(t *testing.T) {
-	trace := jaegerModels.Trace{
-		Processes: map[jaegerModels.ProcessID]jaegerModels.Process{
+	trace := jsonModel.Trace{
+		Processes: map[jsonModel.ProcessID]jsonModel.Process{
 			"p1": {ServiceName: "productpage"},
 		},
-		Spans: []jaegerModels.Span{
+		Spans: []jsonModel.Span{
 			{
 				SpanID:        "s1",
 				OperationName: "GET /",
 				ProcessID:     "p1",
 				StartTime:     1000,
 				Duration:      5000,
-				Tags:          []jaegerModels.KeyValue{{Key: "http.status_code", Type: "string", Value: "200"}},
+				Tags:          []jsonModel.KeyValue{{Key: "http.status_code", Type: "string", Value: "200"}},
 			},
 		},
 	}
@@ -106,20 +106,20 @@ func TestBuildHierarchy_SingleSpan(t *testing.T) {
 }
 
 func TestBuildHierarchy_RootAndChildren(t *testing.T) {
-	trace := jaegerModels.Trace{
-		Processes: map[jaegerModels.ProcessID]jaegerModels.Process{
+	trace := jsonModel.Trace{
+		Processes: map[jsonModel.ProcessID]jsonModel.Process{
 			"p1": {ServiceName: "productpage-v1"},
 			"p2": {ServiceName: "details-v1"},
 			"p3": {ServiceName: "reviews-v3"},
 		},
-		Spans: []jaegerModels.Span{
+		Spans: []jsonModel.Span{
 			{
 				SpanID:        "root",
 				OperationName: "GET /productpage",
 				ProcessID:     "p1",
 				StartTime:     1000,
 				Duration:      25480,
-				Tags:          []jaegerModels.KeyValue{{Key: "http.status_code", Type: "string", Value: "200"}},
+				Tags:          []jsonModel.KeyValue{{Key: "http.status_code", Type: "string", Value: "200"}},
 			},
 			{
 				SpanID:        "child1",
@@ -127,8 +127,8 @@ func TestBuildHierarchy_RootAndChildren(t *testing.T) {
 				ProcessID:     "p2",
 				StartTime:     3210,
 				Duration:      1760,
-				References:    []jaegerModels.Reference{{RefType: jaegerModels.ChildOf, SpanID: "root"}},
-				Tags:          []jaegerModels.KeyValue{{Key: "http.status_code", Type: "string", Value: "200"}},
+				References:    []jsonModel.Reference{{RefType: jsonModel.ChildOf, SpanID: "root"}},
+				Tags:          []jsonModel.KeyValue{{Key: "http.status_code", Type: "string", Value: "200"}},
 			},
 			{
 				SpanID:        "child2",
@@ -136,8 +136,8 @@ func TestBuildHierarchy_RootAndChildren(t *testing.T) {
 				ProcessID:     "p3",
 				StartTime:     7730,
 				Duration:      15240,
-				References:    []jaegerModels.Reference{{RefType: jaegerModels.ChildOf, SpanID: "root"}},
-				Tags:          []jaegerModels.KeyValue{{Key: "http.status_code", Type: "string", Value: "200"}},
+				References:    []jsonModel.Reference{{RefType: jsonModel.ChildOf, SpanID: "root"}},
+				Tags:          []jsonModel.KeyValue{{Key: "http.status_code", Type: "string", Value: "200"}},
 			},
 		},
 	}
@@ -164,18 +164,18 @@ func TestBuildHierarchy_RootAndChildren(t *testing.T) {
 }
 
 func TestBuildHierarchy_LeafWithTags(t *testing.T) {
-	trace := jaegerModels.Trace{
-		Processes: map[jaegerModels.ProcessID]jaegerModels.Process{
+	trace := jsonModel.Trace{
+		Processes: map[jsonModel.ProcessID]jsonModel.Process{
 			"p1": {ServiceName: "ratings"},
 		},
-		Spans: []jaegerModels.Span{
+		Spans: []jsonModel.Span{
 			{
 				SpanID:        "root",
 				OperationName: "GET",
 				ProcessID:     "p1",
 				StartTime:     1000,
 				Duration:      1640,
-				Tags: []jaegerModels.KeyValue{
+				Tags: []jsonModel.KeyValue{
 					{Key: "db.type", Type: "string", Value: "mysql"},
 					{Key: "db.statement", Type: "string", Value: "SELECT * FROM ratings"},
 				},
@@ -196,12 +196,12 @@ func TestBuildHierarchy_LeafWithTags(t *testing.T) {
 
 func TestBuildHierarchy_MultipleRoots_PicksEarliestByStartTime(t *testing.T) {
 	// Two root spans; implementation picks the one with earliest StartTime
-	trace := jaegerModels.Trace{
-		Processes: map[jaegerModels.ProcessID]jaegerModels.Process{
+	trace := jsonModel.Trace{
+		Processes: map[jsonModel.ProcessID]jsonModel.Process{
 			"p1": {ServiceName: "later"},
 			"p2": {ServiceName: "earlier"},
 		},
-		Spans: []jaegerModels.Span{
+		Spans: []jsonModel.Span{
 			{SpanID: "r2", OperationName: "OP2", ProcessID: "p1", StartTime: 5000, Duration: 1000},
 			{SpanID: "r1", OperationName: "OP1", ProcessID: "p2", StartTime: 1000, Duration: 500},
 		},
@@ -231,9 +231,9 @@ func TestSpanKindToDirection(t *testing.T) {
 		{"internal", ""},
 	}
 	for _, tt := range tests {
-		s := &jaegerModels.Span{}
+		s := &jsonModel.Span{}
 		if tt.tagValue != "" {
-			s.Tags = []jaegerModels.KeyValue{{Key: "span.kind", Type: "string", Value: tt.tagValue}}
+			s.Tags = []jsonModel.KeyValue{{Key: "span.kind", Type: "string", Value: tt.tagValue}}
 		}
 		got := spanKindToDirection(s)
 		if got != tt.want {
@@ -244,18 +244,18 @@ func TestSpanKindToDirection(t *testing.T) {
 
 func TestBuildHierarchy_DirectionFromSpanKind(t *testing.T) {
 	// Simulate sidecar: root (server/inbound), child (client/outbound) same service
-	trace := jaegerModels.Trace{
-		Processes: map[jaegerModels.ProcessID]jaegerModels.Process{
+	trace := jsonModel.Trace{
+		Processes: map[jsonModel.ProcessID]jsonModel.Process{
 			"p1": {ServiceName: "productpage"},
 		},
-		Spans: []jaegerModels.Span{
+		Spans: []jsonModel.Span{
 			{
 				SpanID:        "root",
 				OperationName: "GET /productpage",
 				ProcessID:     "p1",
 				StartTime:     1000,
 				Duration:      10000,
-				Tags:          []jaegerModels.KeyValue{{Key: "span.kind", Type: "string", Value: "server"}},
+				Tags:          []jsonModel.KeyValue{{Key: "span.kind", Type: "string", Value: "server"}},
 			},
 			{
 				SpanID:        "child",
@@ -263,8 +263,8 @@ func TestBuildHierarchy_DirectionFromSpanKind(t *testing.T) {
 				ProcessID:     "p1",
 				StartTime:     2000,
 				Duration:      5000,
-				References:    []jaegerModels.Reference{{RefType: jaegerModels.ChildOf, SpanID: "root"}},
-				Tags:          []jaegerModels.KeyValue{{Key: "span.kind", Type: "string", Value: "client"}},
+				References:    []jsonModel.Reference{{RefType: jsonModel.ChildOf, SpanID: "root"}},
+				Tags:          []jsonModel.KeyValue{{Key: "span.kind", Type: "string", Value: "client"}},
 			},
 		},
 	}
@@ -285,20 +285,20 @@ func TestBuildHierarchy_DirectionFromSpanKind(t *testing.T) {
 
 func TestGetParentSpanID(t *testing.T) {
 	// Prefer References.ChildOf over ParentSpanID
-	s1 := &jaegerModels.Span{
+	s1 := &jsonModel.Span{
 		ParentSpanID: "legacy",
-		References:   []jaegerModels.Reference{{RefType: jaegerModels.ChildOf, SpanID: "ref"}},
+		References:   []jsonModel.Reference{{RefType: jsonModel.ChildOf, SpanID: "ref"}},
 	}
 	if getParentSpanID(s1) != "ref" {
 		t.Errorf("expected parent from References, got %s", getParentSpanID(s1))
 	}
 
-	s2 := &jaegerModels.Span{ParentSpanID: "legacy"}
+	s2 := &jsonModel.Span{ParentSpanID: "legacy"}
 	if getParentSpanID(s2) != "legacy" {
 		t.Errorf("expected parent from ParentSpanID, got %s", getParentSpanID(s2))
 	}
 
-	s3 := &jaegerModels.Span{}
+	s3 := &jsonModel.Span{}
 	if getParentSpanID(s3) != "" {
 		t.Errorf("expected empty parent, got %s", getParentSpanID(s3))
 	}
@@ -394,7 +394,7 @@ func TestExecute_EmptySpansWithErrors_Returns404(t *testing.T) {
 
 	fake := &fakeTracingClient{
 		traceDetail: &models.TracingSingleTrace{
-			Data:   jaegerModels.Trace{Spans: []jaegerModels.Span{}},
+			Data:   jsonModel.Trace{Spans: []jsonModel.Span{}},
 			Errors: []models.StructuredError{{Msg: "partial failure"}},
 		},
 	}
@@ -413,18 +413,18 @@ func TestExecute_ValidTrace_Returns200WithHierarchy(t *testing.T) {
 
 	fake := &fakeTracingClient{
 		traceDetail: &models.TracingSingleTrace{
-			Data: jaegerModels.Trace{
-				Processes: map[jaegerModels.ProcessID]jaegerModels.Process{
+			Data: jsonModel.Trace{
+				Processes: map[jsonModel.ProcessID]jsonModel.Process{
 					"p1": {ServiceName: "productpage"},
 				},
-				Spans: []jaegerModels.Span{
+				Spans: []jsonModel.Span{
 					{
 						SpanID:        "s1",
 						OperationName: "GET /",
 						ProcessID:     "p1",
 						StartTime:     1000,
 						Duration:      5000,
-						Tags:          []jaegerModels.KeyValue{{Key: "http.status_code", Type: "string", Value: "200"}},
+						Tags:          []jsonModel.KeyValue{{Key: "http.status_code", Type: "string", Value: "200"}},
 					},
 				},
 			},

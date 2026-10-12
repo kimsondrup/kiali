@@ -22,8 +22,8 @@ import (
 	"strings"
 
 	"github.com/kiali/kiali/log"
+	"github.com/kiali/kiali/models/tracing/json"
 	"github.com/kiali/kiali/tracing/jaeger/model"
-	"github.com/kiali/kiali/tracing/jaeger/model/json"
 )
 
 // FromDomain converts model.Trace into json.Trace format.

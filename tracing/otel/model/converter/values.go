@@ -9,18 +9,18 @@ import (
 	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
 
 	"github.com/kiali/kiali/log"
-	jaegerModels "github.com/kiali/kiali/tracing/jaeger/model/json"
+	jsonModel "github.com/kiali/kiali/models/tracing/json"
 )
 
 // keyValueFromAttribute carries the type of an OTLP attribute over to Jaeger's typed key-value,
 // so that a port, a payload size or a status code reaches the UI as the number it is. The second
 // return reports a value written as a variant this build cannot read, which the caller names in
 // one warning per span rather than one per attribute.
-func keyValueFromAttribute(attribute *commonpb.KeyValue) (jaegerModels.KeyValue, bool) {
+func keyValueFromAttribute(attribute *commonpb.KeyValue) (jsonModel.KeyValue, bool) {
 	plain := plainValue(attribute.GetValue())
 	unread := plain == nil && attribute.GetValue().GetValue() != nil
 	value, valueType := attributeValue(plain)
-	return jaegerModels.KeyValue{Key: attribute.GetKey(), Value: value, Type: valueType}, unread
+	return jsonModel.KeyValue{Key: attribute.GetKey(), Value: value, Type: valueType}, unread
 }
 
 // attributeValue maps an OTLP attribute value, as plainValue returns it, onto a Jaeger tag value
@@ -29,35 +29,35 @@ func keyValueFromAttribute(attribute *commonpb.KeyValue) (jaegerModels.KeyValue,
 // The type is carried rather than stringified because the attribute arrives with it: OTLP states
 // which variant was written, Kiali's tag model has a field for it, and turning an int64 into text
 // here would discard something no later reader can recover.
-func attributeValue(value any) (any, jaegerModels.ValueType) {
+func attributeValue(value any) (any, jsonModel.ValueType) {
 	switch plain := value.(type) {
 	case string:
-		return plain, jaegerModels.StringType
+		return plain, jsonModel.StringType
 	case bool:
-		return plain, jaegerModels.BoolType
+		return plain, jsonModel.BoolType
 	case int64:
-		return plain, jaegerModels.Int64Type
+		return plain, jsonModel.Int64Type
 	case float64:
 		// Finite by construction: plainValue hands a non-finite double over as text, because one
 		// nested in an array or a map would fail the json.Marshal below.
-		return plain, jaegerModels.Float64Type
+		return plain, jsonModel.Float64Type
 	case []byte:
 		// Rendered as base64 by encoding/json, which is the form OTLP itself writes bytes in.
-		return plain, jaegerModels.BinaryType
+		return plain, jsonModel.BinaryType
 	case nil:
 		// No variant set, or one this build cannot read: the proto's profiling variant, or a
 		// variant a later revision adds. Either is read as though the value were absent, and
 		// warnUnreadVariants says which keys the second case applied to.
-		return "", jaegerModels.StringType
+		return "", jsonModel.StringType
 	default:
 		// An array or a map. Jaeger's key-value has no composite type, and Jaeger's own OTLP
 		// translation renders these as JSON as well.
 		text, err := json.Marshal(plain)
 		if err != nil {
 			log.Errorf("Could not render an attribute value of type [%T]: %s", plain, err)
-			return "", jaegerModels.StringType
+			return "", jsonModel.StringType
 		}
-		return string(text), jaegerModels.StringType
+		return string(text), jsonModel.StringType
 	}
 }
 

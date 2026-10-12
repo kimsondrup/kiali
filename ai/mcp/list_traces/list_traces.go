@@ -11,7 +11,7 @@ import (
 	"github.com/kiali/kiali/ai/mcputil"
 	"github.com/kiali/kiali/config"
 	"github.com/kiali/kiali/models"
-	jaegerModels "github.com/kiali/kiali/tracing/jaeger/model/json"
+	jsonModel "github.com/kiali/kiali/models/tracing/json"
 	"github.com/kiali/kiali/util"
 )
 
@@ -180,8 +180,8 @@ func buildServiceQuery(args GetTracesArgs, conf *config.Config, includeErrorTag 
 	return q
 }
 
-func filterTracesWithErrorIndicators(traces []jaegerModels.Trace) []jaegerModels.Trace {
-	out := make([]jaegerModels.Trace, 0, len(traces))
+func filterTracesWithErrorIndicators(traces []jsonModel.Trace) []jsonModel.Trace {
+	out := make([]jsonModel.Trace, 0, len(traces))
 	for _, t := range traces {
 		if traceHasErrorIndicators(t) {
 			out = append(out, t)
@@ -190,7 +190,7 @@ func filterTracesWithErrorIndicators(traces []jaegerModels.Trace) []jaegerModels
 	return out
 }
 
-func traceHasErrorIndicators(trace jaegerModels.Trace) bool {
+func traceHasErrorIndicators(trace jsonModel.Trace) bool {
 	for i := range trace.Spans {
 		s := &trace.Spans[i]
 		if isErrorSpan(s) {
@@ -213,9 +213,9 @@ func traceHasErrorIndicators(trace jaegerModels.Trace) bool {
 	return false
 }
 
-func summarizeTrace(trace jaegerModels.Trace, maxSpans int) TraceSummary {
+func summarizeTrace(trace jsonModel.Trace, maxSpans int) TraceSummary {
 
-	byID := make(map[string]*jaegerModels.Span, len(trace.Spans))
+	byID := make(map[string]*jsonModel.Span, len(trace.Spans))
 	for i := range trace.Spans {
 		s := &trace.Spans[i]
 		byID[string(s.SpanID)] = s
@@ -227,7 +227,7 @@ func summarizeTrace(trace jaegerModels.Trace, maxSpans int) TraceSummary {
 		spanID := string(s.SpanID)
 		parent := ""
 		for _, ref := range s.References {
-			if ref.RefType == jaegerModels.ChildOf && string(ref.SpanID) != "" {
+			if ref.RefType == jsonModel.ChildOf && string(ref.SpanID) != "" {
 				parent = string(ref.SpanID)
 				break
 			}
@@ -308,7 +308,7 @@ func summarizeTrace(trace jaegerModels.Trace, maxSpans int) TraceSummary {
 	}
 }
 
-func spanServiceName(trace jaegerModels.Trace, span *jaegerModels.Span) string {
+func spanServiceName(trace jsonModel.Trace, span *jsonModel.Span) string {
 	if span == nil {
 		return ""
 	}
@@ -321,7 +321,7 @@ func spanServiceName(trace jaegerModels.Trace, span *jaegerModels.Span) string {
 	return ""
 }
 
-func isErrorSpan(span *jaegerModels.Span) bool {
+func isErrorSpan(span *jsonModel.Span) bool {
 	if span == nil {
 		return false
 	}
@@ -342,7 +342,7 @@ func isErrorSpan(span *jaegerModels.Span) bool {
 	return false
 }
 
-func isHTTPErrorSpan(span *jaegerModels.Span) bool {
+func isHTTPErrorSpan(span *jsonModel.Span) bool {
 	if span == nil {
 		return false
 	}
@@ -370,7 +370,7 @@ func isHTTPErrorSpan(span *jaegerModels.Span) bool {
 	return false
 }
 
-func isGRPCErrorSpan(span *jaegerModels.Span) bool {
+func isGRPCErrorSpan(span *jsonModel.Span) bool {
 	if span == nil {
 		return false
 	}
@@ -414,7 +414,7 @@ func isGRPCErrorSpan(span *jaegerModels.Span) bool {
 	return false
 }
 
-func hasNonEmptyTag(span *jaegerModels.Span, key string) bool {
+func hasNonEmptyTag(span *jsonModel.Span, key string) bool {
 	if span == nil {
 		return false
 	}
@@ -426,7 +426,7 @@ func hasNonEmptyTag(span *jaegerModels.Span, key string) bool {
 	return false
 }
 
-func hasTagValueEqualFold(span *jaegerModels.Span, key, want string) bool {
+func hasTagValueEqualFold(span *jsonModel.Span, key, want string) bool {
 	if span == nil {
 		return false
 	}
@@ -438,7 +438,7 @@ func hasTagValueEqualFold(span *jaegerModels.Span, key, want string) bool {
 	return false
 }
 
-func interestingTags(span *jaegerModels.Span) map[string]string {
+func interestingTags(span *jsonModel.Span) map[string]string {
 	if span == nil {
 		return nil
 	}

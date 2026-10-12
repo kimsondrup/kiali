@@ -14,9 +14,9 @@ import (
 
 	"github.com/kiali/kiali/config"
 	"github.com/kiali/kiali/models"
+	jsonModel "github.com/kiali/kiali/models/tracing/json"
 	"github.com/kiali/kiali/tracing/jaeger/model"
 	jsonConv "github.com/kiali/kiali/tracing/jaeger/model/converter/json"
-	jsonModel "github.com/kiali/kiali/tracing/jaeger/model/json"
 	"github.com/kiali/kiali/util"
 )
 

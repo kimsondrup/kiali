@@ -5,8 +5,8 @@ import (
 	"github.com/kiali/kiali/handlers/authentication"
 	"github.com/kiali/kiali/kubernetes"
 	"github.com/kiali/kiali/models"
+	jsonModel "github.com/kiali/kiali/models/tracing/json"
 	"github.com/kiali/kiali/status"
-	jaegerModels "github.com/kiali/kiali/tracing/jaeger/model/json"
 )
 
 /////////////////////
@@ -683,7 +683,7 @@ type ServiceDetailsResponse struct {
 // swagger:response traceDetailsResponse
 type TraceDetailsResponse struct {
 	// in:body
-	Body []jaegerModels.Trace
+	Body []jsonModel.Trace
 }
 
 // Number of traces in error

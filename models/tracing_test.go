@@ -10,32 +10,32 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	jaegerModels "github.com/kiali/kiali/tracing/jaeger/model/json"
+	jsonModel "github.com/kiali/kiali/models/tracing/json"
 )
 
 // TestTracingDTOWireNames pins the property names of every tracing response
 // body, because they are the swagger definitions the UI reads and renaming a
 // field here breaks the API without breaking a compile.
 func TestTracingDTOWireNames(t *testing.T) {
-	span := jaegerModels.Span{
+	span := jsonModel.Span{
 		TraceID:       "0af7651916cd43dd8448eb211c80319c",
 		SpanID:        "b7ad6b7169203331",
 		ParentSpanID:  "b9c7c989f97918e1",
 		Flags:         1,
 		OperationName: "productpage.bookinfo.svc.cluster.local:9080/*",
-		References:    []jaegerModels.Reference{{RefType: jaegerModels.ChildOf}},
+		References:    []jsonModel.Reference{{RefType: jsonModel.ChildOf}},
 		StartTime:     1,
 		Duration:      2,
-		Tags:          []jaegerModels.KeyValue{{Key: "error", Type: jaegerModels.BoolType, Value: true}},
-		Logs:          []jaegerModels.Log{{Timestamp: 3}},
+		Tags:          []jsonModel.KeyValue{{Key: "error", Type: jsonModel.BoolType, Value: true}},
+		Logs:          []jsonModel.Log{{Timestamp: 3}},
 		ProcessID:     "p1",
-		Process:       &jaegerModels.Process{ServiceName: "productpage"},
+		Process:       &jsonModel.Process{ServiceName: "productpage"},
 		Warnings:      []string{"clock skew"},
 	}
-	trace := jaegerModels.Trace{
+	trace := jsonModel.Trace{
 		TraceID:   span.TraceID,
-		Spans:     []jaegerModels.Span{span},
-		Processes: map[jaegerModels.ProcessID]jaegerModels.Process{"p1": {ServiceName: "productpage"}},
+		Spans:     []jsonModel.Span{span},
+		Processes: map[jsonModel.ProcessID]jsonModel.Process{"p1": {ServiceName: "productpage"}},
 		Warnings:  []string{"clock skew"},
 		Matched:   1,
 	}
@@ -48,7 +48,7 @@ func TestTracingDTOWireNames(t *testing.T) {
 	}{
 		{"StructuredError", errs[0], []string{"code", "msg", "traceID"}},
 		{"TracingServices", TracingServices{Data: []string{"productpage"}}, []string{"data"}},
-		{"TracingResponse", TracingResponse{Data: []jaegerModels.Trace{trace}, Errors: errs, TracingServiceName: "productpage"}, []string{"data", "errors", "tracingServiceName"}},
+		{"TracingResponse", TracingResponse{Data: []jsonModel.Trace{trace}, Errors: errs, TracingServiceName: "productpage"}, []string{"data", "errors", "tracingServiceName"}},
 		{"TracingSingleTrace", TracingSingleTrace{Data: trace, Errors: errs}, []string{"data", "errors"}},
 		{"TracingSpan", TracingSpan{Span: span, TraceSize: 7}, []string{"duration", "flags", "logs", "operationName", "parentSpanID", "process", "processID", "references", "spanID", "startTime", "tags", "traceID", "traceSize", "warnings"}},
 		{"ParsedUrl", ParsedUrl{BaseUrl: "http://tempo:3200", Host: "tempo", Path: "/", Port: "3200", Scheme: "http", Url: &url.URL{Scheme: "http"}}, []string{"baseUrl", "host", "path", "port", "scheme", "url"}},
@@ -75,10 +75,10 @@ func TestTracingDTOWireNames(t *testing.T) {
 // TestTracingSpanWireNames pins the trace and span property names reached
 // through TracingResponse, which is the body the UI's trace list decodes.
 func TestTracingSpanWireNames(t *testing.T) {
-	response := TracingResponse{Data: []jaegerModels.Trace{{
+	response := TracingResponse{Data: []jsonModel.Trace{{
 		TraceID:   "0af7651916cd43dd8448eb211c80319c",
-		Spans:     []jaegerModels.Span{{SpanID: "b7ad6b7169203331", Tags: []jaegerModels.KeyValue{{Key: "error", Type: jaegerModels.BoolType, Value: true}}}},
-		Processes: map[jaegerModels.ProcessID]jaegerModels.Process{"p1": {ServiceName: "productpage", Tags: []jaegerModels.KeyValue{}}},
+		Spans:     []jsonModel.Span{{SpanID: "b7ad6b7169203331", Tags: []jsonModel.KeyValue{{Key: "error", Type: jsonModel.BoolType, Value: true}}}},
+		Processes: map[jsonModel.ProcessID]jsonModel.Process{"p1": {ServiceName: "productpage", Tags: []jsonModel.KeyValue{}}},
 		Warnings:  []string{},
 		Matched:   1,
 	}}}

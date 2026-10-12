@@ -9,14 +9,14 @@ import (
 	"github.com/kiali/kiali/config"
 	"github.com/kiali/kiali/log"
 	"github.com/kiali/kiali/models"
+	jsonModel "github.com/kiali/kiali/models/tracing/json"
 	"github.com/kiali/kiali/observability"
 	"github.com/kiali/kiali/tracing"
-	jaegerModels "github.com/kiali/kiali/tracing/jaeger/model/json"
 	"github.com/kiali/kiali/util"
 )
 
 type (
-	SpanFilter = func(span *jaegerModels.Span) bool
+	SpanFilter = func(span *jsonModel.Span) bool
 )
 
 type TracingService struct {
@@ -114,7 +114,7 @@ func operationSpanFilter(ctx context.Context, ns, service string) SpanFilter {
 	fqService := util.BuildNameNSKey(service, ns)
 	// Filter out app spans based on operation name.
 	// For envoy traces, operation name is like "service-name.namespace.svc.cluster.local:8000/*"
-	return func(span *jaegerModels.Span) bool {
+	return func(span *jsonModel.Span) bool {
 		// For ambient traces, use canonical service tags when available.
 		if spanTagMatches(span, "istio.destination_canonical_service", "istio.destination_namespace", service, ns) ||
 			spanTagMatches(span, "istio.source_canonical_service", "istio.source_namespace", service, ns) {
@@ -125,7 +125,7 @@ func operationSpanFilter(ctx context.Context, ns, service string) SpanFilter {
 	}
 }
 
-func spanTagValue(span *jaegerModels.Span, key string) (string, bool) {
+func spanTagValue(span *jsonModel.Span, key string) (string, bool) {
 	for _, tag := range span.Tags {
 		if tag.Key != key {
 			continue
@@ -137,7 +137,7 @@ func spanTagValue(span *jaegerModels.Span, key string) (string, bool) {
 	return "", false
 }
 
-func spanTagMatches(span *jaegerModels.Span, nameTag, namespaceTag, expectedName, expectedNamespace string) bool {
+func spanTagMatches(span *jsonModel.Span, nameTag, namespaceTag, expectedName, expectedNamespace string) bool {
 	name, nameFound := spanTagValue(span, nameTag)
 	namespace, nsFound := spanTagValue(span, namespaceTag)
 	if !nameFound || !nsFound {
@@ -146,12 +146,12 @@ func spanTagMatches(span *jaegerModels.Span, nameTag, namespaceTag, expectedName
 	return name == expectedName && namespace == expectedNamespace
 }
 
-func spanMatchesAmbientWorkload(span *jaegerModels.Span, workload, namespace string) bool {
+func spanMatchesAmbientWorkload(span *jsonModel.Span, workload, namespace string) bool {
 	return spanTagMatches(span, "istio.destination_workload", "istio.destination_namespace", workload, namespace) ||
 		spanTagMatches(span, "istio.source_workload", "istio.source_namespace", workload, namespace)
 }
 
-func spanHasAmbientWorkloadTags(span *jaegerModels.Span) bool {
+func spanHasAmbientWorkloadTags(span *jsonModel.Span) bool {
 	_, hasDestWorkload := spanTagValue(span, "istio.destination_workload")
 	_, hasDestNamespace := spanTagValue(span, "istio.destination_namespace")
 	_, hasSourceWorkload := spanTagValue(span, "istio.source_workload")
@@ -178,7 +178,7 @@ func (in *TracingService) GetWorkloadSpans(ctx context.Context, ns, workload str
 
 func wkdSpanFilter(ctx context.Context, ns string, tracingName models.TracingName) SpanFilter {
 	// Filter out app traces based on the node_id tag, that contains workload information.
-	return func(span *jaegerModels.Span) bool {
+	return func(span *jsonModel.Span) bool {
 		return spanMatchesWorkload(ctx, span, ns, tracingName)
 	}
 }
@@ -196,7 +196,7 @@ func (in *TracingService) GetAppTraces(ctx context.Context, ns, tracingName, app
 	if tracingName != app && r != nil {
 		// Filter by app
 		filter := operationSpanFilter(ctx, ns, app)
-		traces := []jaegerModels.Trace{}
+		traces := []jsonModel.Trace{}
 		for _, trace := range r.Data {
 			for _, span := range trace.Spans {
 				if filter(&span) {
@@ -247,7 +247,7 @@ func (in *TracingService) GetServiceTraces(ctx context.Context, ns, service stri
 		// Filter out app traces based on operation name.
 		// For envoy traces, operation name is like "service-name.namespace.svc.cluster.local:8000/*"
 		filter := operationSpanFilter(ctx, ns, service)
-		traces := []jaegerModels.Trace{}
+		traces := []jsonModel.Trace{}
 		for _, trace := range r.Data {
 			for _, span := range trace.Spans {
 				if filter(&span) {
@@ -283,7 +283,7 @@ func (in *TracingService) GetWorkloadTraces(ctx context.Context, ns, workload st
 	r, err := in.GetAppTraces(ctx, ns, app.Lookup, app.App, query)
 	// Filter out app traces based on the node_id tag, that contains workload information.
 	if r != nil && err == nil {
-		traces := []jaegerModels.Trace{}
+		traces := []jsonModel.Trace{}
 		for _, trace := range r.Data {
 			if matchesWorkload(ctx, &trace, ns, app) {
 				traces = append(traces, trace)
@@ -319,7 +319,7 @@ func (in *TracingService) GetStatus(ctx context.Context) (accessible bool, err e
 	return client.GetServiceStatus(ctx)
 }
 
-func matchesWorkload(ctx context.Context, trace *jaegerModels.Trace, namespace string, tracingName models.TracingName) bool {
+func matchesWorkload(ctx context.Context, trace *jsonModel.Trace, namespace string, tracingName models.TracingName) bool {
 	for _, span := range trace.Spans {
 		if process, ok := trace.Processes[span.ProcessID]; ok {
 			span.Process = &process
@@ -333,7 +333,7 @@ func matchesWorkload(ctx context.Context, trace *jaegerModels.Trace, namespace s
 
 // spanMatchesWorkload matches a span based on a node id or the hostname
 // For Ambient, as the trace is reported by the Waypoint proxy, a match based on the app is done
-func spanMatchesWorkload(ctx context.Context, span *jaegerModels.Span, namespace string, tracingName models.TracingName) bool {
+func spanMatchesWorkload(ctx context.Context, span *jsonModel.Span, namespace string, tracingName models.TracingName) bool {
 	zl := log.FromContext(ctx)
 
 	// If the workload has a waypoint, the span won't match, but the operation name can
@@ -420,7 +420,7 @@ func tracesToSpans(ctx context.Context, app models.TracingName, r *models.Tracin
 			}
 		} else {
 			// First, get the desired processes for our service
-			processes := make(map[jaegerModels.ProcessID]jaegerModels.Process)
+			processes := make(map[jsonModel.ProcessID]jsonModel.Process)
 			for pId, process := range trace.Processes {
 				if process.ServiceName == app.Lookup || process.ServiceName == r.TracingServiceName {
 					processes[pId] = process

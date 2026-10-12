@@ -7,7 +7,7 @@ import (
 
 	"github.com/kiali/kiali/ai/mcputil"
 	"github.com/kiali/kiali/models"
-	jaegerModels "github.com/kiali/kiali/tracing/jaeger/model/json"
+	jsonModel "github.com/kiali/kiali/models/tracing/json"
 )
 
 func Execute(
@@ -42,17 +42,17 @@ func Execute(
 	}, http.StatusOK
 }
 
-func buildHierarchy(trace jaegerModels.Trace) (totalMs float64, root *HierarchyNode) {
+func buildHierarchy(trace jsonModel.Trace) (totalMs float64, root *HierarchyNode) {
 	if len(trace.Spans) == 0 {
 		return 0, nil
 	}
 
-	byID := make(map[string]*jaegerModels.Span, len(trace.Spans))
+	byID := make(map[string]*jsonModel.Span, len(trace.Spans))
 	for i := range trace.Spans {
 		byID[string(trace.Spans[i].SpanID)] = &trace.Spans[i]
 	}
 
-	childrenByParent := make(map[string][]*jaegerModels.Span)
+	childrenByParent := make(map[string][]*jsonModel.Span)
 	for i := range trace.Spans {
 		s := &trace.Spans[i]
 		parentID := getParentSpanID(s)
@@ -90,9 +90,9 @@ func buildHierarchy(trace jaegerModels.Trace) (totalMs float64, root *HierarchyN
 	return totalMs, root
 }
 
-func getParentSpanID(s *jaegerModels.Span) string {
+func getParentSpanID(s *jsonModel.Span) string {
 	for _, ref := range s.References {
-		if ref.RefType == jaegerModels.ChildOf && string(ref.SpanID) != "" {
+		if ref.RefType == jsonModel.ChildOf && string(ref.SpanID) != "" {
 			return string(ref.SpanID)
 		}
 	}
@@ -102,7 +102,7 @@ func getParentSpanID(s *jaegerModels.Span) string {
 	return ""
 }
 
-func spanToNode(trace jaegerModels.Trace, s *jaegerModels.Span, baseStart uint64, byID map[string]*jaegerModels.Span, childrenByParent map[string][]*jaegerModels.Span) *HierarchyNode {
+func spanToNode(trace jsonModel.Trace, s *jsonModel.Span, baseStart uint64, byID map[string]*jsonModel.Span, childrenByParent map[string][]*jsonModel.Span) *HierarchyNode {
 	service := spanServiceName(trace, s)
 	op := s.OperationName
 	durationMs := float64(s.Duration) / 1000.0
@@ -146,7 +146,7 @@ func spanToNode(trace jaegerModels.Trace, s *jaegerModels.Span, baseStart uint64
 
 // spanKindToDirection maps OpenTracing/Envoy span.kind (client/server) to inbound/outbound
 // so the AI can tell sidecar hops: same service with outbound then inbound = proxy -> app.
-func spanKindToDirection(span *jaegerModels.Span) string {
+func spanKindToDirection(span *jsonModel.Span) string {
 	if span == nil {
 		return ""
 	}
@@ -165,7 +165,7 @@ func spanKindToDirection(span *jaegerModels.Span) string {
 	return ""
 }
 
-func spanServiceName(trace jaegerModels.Trace, span *jaegerModels.Span) string {
+func spanServiceName(trace jsonModel.Trace, span *jsonModel.Span) string {
 	if span == nil {
 		return ""
 	}
@@ -178,7 +178,7 @@ func spanServiceName(trace jaegerModels.Trace, span *jaegerModels.Span) string {
 	return ""
 }
 
-func spanStatus(span *jaegerModels.Span) int {
+func spanStatus(span *jsonModel.Span) int {
 	if span == nil {
 		return 0
 	}
@@ -212,7 +212,7 @@ func tagToInt(v interface{}) int {
 	}
 }
 
-func interestingTags(span *jaegerModels.Span) map[string]string {
+func interestingTags(span *jsonModel.Span) map[string]string {
 	if span == nil {
 		return nil
 	}

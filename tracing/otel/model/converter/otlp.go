@@ -12,7 +12,7 @@ import (
 	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
 
 	"github.com/kiali/kiali/log"
-	jaegerModels "github.com/kiali/kiali/tracing/jaeger/model/json"
+	jsonModel "github.com/kiali/kiali/models/tracing/json"
 )
 
 const (
@@ -35,9 +35,9 @@ const (
 //
 // It is the one place the OTLP wire model is read, for both providers and for both of their
 // transports, so every representational decision below is made exactly once.
-func TracesFromOTLP(traces *tracepb.TracesData) []jaegerModels.Trace {
-	var order []jaegerModels.TraceID
-	byID := map[jaegerModels.TraceID]*traceBuilder{}
+func TracesFromOTLP(traces *tracepb.TracesData) []jsonModel.Trace {
+	var order []jsonModel.TraceID
+	byID := map[jsonModel.TraceID]*traceBuilder{}
 
 	for _, resourceSpans := range traces.GetResourceSpans() {
 		process := processFromResource(resourceSpans.GetResource())
@@ -45,7 +45,7 @@ func TracesFromOTLP(traces *tracepb.TracesData) []jaegerModels.Trace {
 		// library, and a proxy reports two of them for well over a third of the resources it sends.
 		for _, scopeSpans := range resourceSpans.GetScopeSpans() {
 			for _, span := range scopeSpans.GetSpans() {
-				traceID := jaegerModels.TraceID(hex.EncodeToString(span.GetTraceId()))
+				traceID := jsonModel.TraceID(hex.EncodeToString(span.GetTraceId()))
 				converted, ok := spanFromOTLP(span, traceID, scopeSpans.GetScope())
 				if !ok {
 					continue
@@ -61,7 +61,7 @@ func TracesFromOTLP(traces *tracepb.TracesData) []jaegerModels.Trace {
 		}
 	}
 
-	converted := make([]jaegerModels.Trace, 0, len(order))
+	converted := make([]jsonModel.Trace, 0, len(order))
 	for _, traceID := range order {
 		converted = append(converted, byID[traceID].trace())
 	}
@@ -71,7 +71,7 @@ func TracesFromOTLP(traces *tracepb.TracesData) []jaegerModels.Trace {
 // TraceFromOTLP converts an OTLP payload holding a single trace, and answers nil for a payload
 // holding no span at all. Whether that is a trace the backend does not have or a backend that
 // answered badly is told by the transport's own status, not here.
-func TraceFromOTLP(traces *tracepb.TracesData) *jaegerModels.Trace {
+func TraceFromOTLP(traces *tracepb.TracesData) *jsonModel.Trace {
 	converted := TracesFromOTLP(traces)
 	if len(converted) == 0 {
 		return nil
@@ -84,17 +84,17 @@ func TraceFromOTLP(traces *tracepb.TracesData) *jaegerModels.Trace {
 
 // traceBuilder collects the spans of one trace together with the process table they resolve in.
 type traceBuilder struct {
-	traceID   jaegerModels.TraceID
-	spans     []jaegerModels.Span
-	processes map[jaegerModels.ProcessID]jaegerModels.Process
-	keys      map[string]jaegerModels.ProcessID
+	traceID   jsonModel.TraceID
+	spans     []jsonModel.Span
+	processes map[jsonModel.ProcessID]jsonModel.Process
+	keys      map[string]jsonModel.ProcessID
 }
 
-func newTraceBuilder(traceID jaegerModels.TraceID) *traceBuilder {
+func newTraceBuilder(traceID jsonModel.TraceID) *traceBuilder {
 	return &traceBuilder{
 		traceID:   traceID,
-		processes: map[jaegerModels.ProcessID]jaegerModels.Process{},
-		keys:      map[string]jaegerModels.ProcessID{},
+		processes: map[jsonModel.ProcessID]jsonModel.Process{},
+		keys:      map[string]jsonModel.ProcessID{},
 	}
 }
 
@@ -102,7 +102,7 @@ func newTraceBuilder(traceID jaegerModels.TraceID) *traceBuilder {
 // an embedded value. Both are needed: a span is selected either by the service name of its
 // embedded process or by looking its process ID up in the table, and which of the two happens is
 // not this layer's business.
-func (b *traceBuilder) add(span jaegerModels.Span, process jaegerModels.Process) {
+func (b *traceBuilder) add(span jsonModel.Span, process jsonModel.Process) {
 	span.ProcessID = b.processID(process)
 	span.Process = &process
 	b.spans = append(b.spans, span)
@@ -110,19 +110,19 @@ func (b *traceBuilder) add(span jaegerModels.Span, process jaegerModels.Process)
 
 // processID returns the key of the process in this trace's table, minting one the first time the
 // process is seen. The p1, p2, ... form is the one Jaeger mints for the same table.
-func (b *traceBuilder) processID(process jaegerModels.Process) jaegerModels.ProcessID {
+func (b *traceBuilder) processID(process jsonModel.Process) jsonModel.ProcessID {
 	key := processKey(process)
 	if id, found := b.keys[key]; found {
 		return id
 	}
-	id := jaegerModels.ProcessID("p" + strconv.Itoa(len(b.processes)+1))
+	id := jsonModel.ProcessID("p" + strconv.Itoa(len(b.processes)+1))
 	b.keys[key] = id
 	b.processes[id] = process
 	return id
 }
 
-func (b *traceBuilder) trace() jaegerModels.Trace {
-	return jaegerModels.Trace{
+func (b *traceBuilder) trace() jsonModel.Trace {
+	return jsonModel.Trace{
 		TraceID:   b.traceID,
 		Spans:     b.spans,
 		Processes: b.processes,
@@ -134,7 +134,7 @@ func (b *traceBuilder) trace() jaegerModels.Trace {
 // processKey identifies a process by its content, so that the resource two spans share becomes one
 // entry of the trace's table. The order of the attributes is not part of that identity: a backend
 // is free to send them differently from one resource span to the next.
-func processKey(process jaegerModels.Process) string {
+func processKey(process jsonModel.Process) string {
 	tags := make([]string, 0, len(process.Tags))
 	for _, tag := range process.Tags {
 		tags = append(tags, fmt.Sprintf("%s=%s=%v", tag.Key, tag.Type, tag.Value))
@@ -143,8 +143,8 @@ func processKey(process jaegerModels.Process) string {
 	return process.ServiceName + "\x00" + strings.Join(tags, "\x00")
 }
 
-func processFromResource(resource *resourcepb.Resource) jaegerModels.Process {
-	process := jaegerModels.Process{Tags: []jaegerModels.KeyValue{}}
+func processFromResource(resource *resourcepb.Resource) jsonModel.Process {
+	process := jsonModel.Process{Tags: []jsonModel.KeyValue{}}
 	var unread []string
 	for _, attribute := range resource.GetAttributes() {
 		if attribute.GetKey() == serviceNameAttribute {
@@ -166,36 +166,36 @@ func processFromResource(resource *resourcepb.Resource) jaegerModels.Process {
 
 // spanFromOTLP converts one span, and reports false for a span that cannot be placed on a
 // timeline.
-func spanFromOTLP(span *tracepb.Span, traceID jaegerModels.TraceID, scope *commonpb.InstrumentationScope) (jaegerModels.Span, bool) {
-	spanID := jaegerModels.SpanID(hex.EncodeToString(span.GetSpanId()))
+func spanFromOTLP(span *tracepb.Span, traceID jsonModel.TraceID, scope *commonpb.InstrumentationScope) (jsonModel.Span, bool) {
+	spanID := jsonModel.SpanID(hex.EncodeToString(span.GetSpanId()))
 
 	// A span with no start time is not placed anywhere on a timeline, and reporting it with a
 	// start time of zero places it at the Unix epoch instead.
 	if span.GetStartTimeUnixNano() == 0 {
 		log.Errorf("Span [%s] of trace [%s] has no start time. Skipping span", spanID, traceID)
-		return jaegerModels.Span{}, false
+		return jsonModel.Span{}, false
 	}
 
-	return jaegerModels.Span{
+	return jsonModel.Span{
 		TraceID:       traceID,
 		SpanID:        spanID,
 		OperationName: span.GetName(),
 		StartTime:     span.GetStartTimeUnixNano() / 1000,
 		Duration:      durationMicros(span, spanID),
-		References:    referencesFromParent(traceID, jaegerModels.SpanID(hex.EncodeToString(span.GetParentSpanId()))),
+		References:    referencesFromParent(traceID, jsonModel.SpanID(hex.EncodeToString(span.GetParentSpanId()))),
 		Tags:          tagsFromSpan(span, spanID, scope),
-		Logs:          []jaegerModels.Log{},
+		Logs:          []jsonModel.Log{},
 		Warnings:      []string{},
 		Flags:         0,
 	}, true
 }
 
-func referencesFromParent(traceID jaegerModels.TraceID, parentSpanID jaegerModels.SpanID) []jaegerModels.Reference {
+func referencesFromParent(traceID jsonModel.TraceID, parentSpanID jsonModel.SpanID) []jsonModel.Reference {
 	if parentSpanID == "" {
-		return []jaegerModels.Reference{}
+		return []jsonModel.Reference{}
 	}
-	return []jaegerModels.Reference{{
-		RefType: jaegerModels.ChildOf,
+	return []jsonModel.Reference{{
+		RefType: jsonModel.ChildOf,
 		TraceID: traceID,
 		SpanID:  parentSpanID,
 	}}
@@ -204,8 +204,8 @@ func referencesFromParent(traceID jaegerModels.TraceID, parentSpanID jaegerModel
 // tagsFromSpan reports everything of a span that Jaeger's model carries as a tag. The names for
 // the OpenTelemetry fields with no Jaeger equivalent come from the OpenTelemetry mapping to
 // non-OTLP formats: https://opentelemetry.io/docs/specs/otel/common/mapping-to-non-otlp/
-func tagsFromSpan(span *tracepb.Span, spanID jaegerModels.SpanID, scope *commonpb.InstrumentationScope) []jaegerModels.KeyValue {
-	tags := make([]jaegerModels.KeyValue, 0, len(span.GetAttributes())+2)
+func tagsFromSpan(span *tracepb.Span, spanID jsonModel.SpanID, scope *commonpb.InstrumentationScope) []jsonModel.KeyValue {
+	tags := make([]jsonModel.KeyValue, 0, len(span.GetAttributes())+2)
 	isError := span.GetStatus().GetCode() == tracepb.Status_STATUS_CODE_ERROR
 	var unread []string
 
@@ -238,13 +238,13 @@ func tagsFromSpan(span *tracepb.Span, spanID jaegerModels.SpanID, scope *commonp
 	// Kiali reads span.kind to tell an inbound span from an outbound one. An unspecified kind
 	// carries no tag, which is also how Jaeger reports it.
 	if kind := spanKind(span.GetKind()); kind != "" {
-		tags = append(tags, jaegerModels.KeyValue{Key: "span.kind", Type: jaegerModels.StringType, Value: kind})
+		tags = append(tags, jsonModel.KeyValue{Key: "span.kind", Type: jsonModel.StringType, Value: kind})
 	}
 
 	// A span whose status is an error MUST carry an error tag with the Boolean value true.
 	// https://opentelemetry.io/docs/specs/otel/trace/sdk_exporters/jaeger
 	if isError {
-		tags = append(tags, jaegerModels.KeyValue{Key: errorAttribute, Type: jaegerModels.BoolType, Value: true})
+		tags = append(tags, jsonModel.KeyValue{Key: errorAttribute, Type: jsonModel.BoolType, Value: true})
 	}
 	tags = append(tags, statusTags(span.GetStatus())...)
 	return append(tags, scopeTags(scope)...)
@@ -259,7 +259,7 @@ func tagsFromSpan(span *tracepb.Span, spanID jaegerModels.SpanID, scope *commonp
 // The error tag the same mapping asks for is not emitted here: it is folded with the error and
 // status attributes in tagsFromSpan, because Envoy sends all three signals on one span and a
 // span must not come out carrying three tags keyed "error".
-func statusTags(status *tracepb.Status) []jaegerModels.KeyValue {
+func statusTags(status *tracepb.Status) []jsonModel.KeyValue {
 	code := ""
 	switch status.GetCode() {
 	case tracepb.Status_STATUS_CODE_OK:
@@ -272,9 +272,9 @@ func statusTags(status *tracepb.Status) []jaegerModels.KeyValue {
 	if code == "" {
 		return nil
 	}
-	tags := []jaegerModels.KeyValue{{Key: "otel.status_code", Type: jaegerModels.StringType, Value: code}}
+	tags := []jsonModel.KeyValue{{Key: "otel.status_code", Type: jsonModel.StringType, Value: code}}
 	if message := status.GetMessage(); message != "" {
-		tags = append(tags, jaegerModels.KeyValue{Key: "otel.status_description", Type: jaegerModels.StringType, Value: message})
+		tags = append(tags, jsonModel.KeyValue{Key: "otel.status_description", Type: jsonModel.StringType, Value: message})
 	}
 	return tags
 }
@@ -291,13 +291,13 @@ func statusTags(status *tracepb.Status) []jaegerModels.KeyValue {
 // Skipping an empty name or version is this function's own choice, not a rule from that document,
 // which prescribes nothing about an empty field. A tag whose value is the empty string says
 // nothing a missing tag does not, and Jaeger's own translator omits them too.
-func scopeTags(scope *commonpb.InstrumentationScope) []jaegerModels.KeyValue {
-	var tags []jaegerModels.KeyValue
+func scopeTags(scope *commonpb.InstrumentationScope) []jsonModel.KeyValue {
+	var tags []jsonModel.KeyValue
 	if name := scope.GetName(); name != "" {
-		tags = append(tags, jaegerModels.KeyValue{Key: "otel.scope.name", Type: jaegerModels.StringType, Value: name})
+		tags = append(tags, jsonModel.KeyValue{Key: "otel.scope.name", Type: jsonModel.StringType, Value: name})
 	}
 	if version := scope.GetVersion(); version != "" {
-		tags = append(tags, jaegerModels.KeyValue{Key: "otel.scope.version", Type: jaegerModels.StringType, Value: version})
+		tags = append(tags, jsonModel.KeyValue{Key: "otel.scope.version", Type: jsonModel.StringType, Value: version})
 	}
 	return tags
 }
@@ -352,7 +352,7 @@ func spanKind(kind tracepb.Span_SpanKind) string {
 // or after the start time. An end before the start wraps the result round to several hundred years.
 // A zero duration says the span's end cannot be believed and keeps the span, which is better than
 // dropping it: it still carries its name, its service and its tags.
-func durationMicros(span *tracepb.Span, spanID jaegerModels.SpanID) uint64 {
+func durationMicros(span *tracepb.Span, spanID jsonModel.SpanID) uint64 {
 	start, end := span.GetStartTimeUnixNano(), span.GetEndTimeUnixNano()
 	if end < start {
 		log.Warningf("Span [%s] end time [%d] is before its start time [%d], reporting a zero duration", spanID, end, start)

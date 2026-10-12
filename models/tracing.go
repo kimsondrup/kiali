@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/kiali/kiali/config"
-	jaegerModels "github.com/kiali/kiali/tracing/jaeger/model/json"
+	jsonModel "github.com/kiali/kiali/models/tracing/json"
 )
 
 const (
@@ -51,18 +51,18 @@ type TracingServices struct {
 }
 
 type TracingResponse struct {
-	Data               []jaegerModels.Trace `json:"data"`
-	Errors             []StructuredError    `json:"errors"`
-	TracingServiceName string               `json:"tracingServiceName"`
+	Data               []jsonModel.Trace `json:"data"`
+	Errors             []StructuredError `json:"errors"`
+	TracingServiceName string            `json:"tracingServiceName"`
 }
 
 type TracingSingleTrace struct {
-	Data   jaegerModels.Trace `json:"data"`
-	Errors []StructuredError  `json:"errors"`
+	Data   jsonModel.Trace   `json:"data"`
+	Errors []StructuredError `json:"errors"`
 }
 
 type TracingSpan struct {
-	jaegerModels.Span
+	jsonModel.Span
 	TraceSize int `json:"traceSize"`
 }
 

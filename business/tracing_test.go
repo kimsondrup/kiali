@@ -10,7 +10,7 @@ import (
 	"github.com/kiali/kiali/config"
 	"github.com/kiali/kiali/kubernetes/kubetest"
 	"github.com/kiali/kiali/models"
-	jaegerModels "github.com/kiali/kiali/tracing/jaeger/model/json"
+	jsonModel "github.com/kiali/kiali/models/tracing/json"
 )
 
 func getLayer(t *testing.T, conf *config.Config) *Layer {
@@ -27,11 +27,11 @@ func getLayer(t *testing.T, conf *config.Config) *Layer {
 	return NewLayerBuilder(t, conf).WithClient(k8s).Build()
 }
 
-var trace1 = jaegerModels.Trace{
-	Spans: []jaegerModels.Span{{
+var trace1 = jsonModel.Trace{
+	Spans: []jsonModel.Span{{
 		ProcessID:     "t1_process_1",
 		OperationName: "reviews.default.svc.cluster.local:8000/*",
-		Tags: []jaegerModels.KeyValue{{
+		Tags: []jsonModel.KeyValue{{
 			Key:   "dummy",
 			Value: "dummy",
 		}, {
@@ -41,22 +41,22 @@ var trace1 = jaegerModels.Trace{
 	}, {
 		ProcessID:     "t1_process_2",
 		OperationName: "my-operation",
-		Tags: []jaegerModels.KeyValue{{
+		Tags: []jsonModel.KeyValue{{
 			Key:   "dummy",
 			Value: "dummy",
 		}},
 	}},
-	Processes: map[jaegerModels.ProcessID]jaegerModels.Process{
+	Processes: map[jsonModel.ProcessID]jsonModel.Process{
 		"t1_process_1": {
 			ServiceName: "reviews.default",
-			Tags: []jaegerModels.KeyValue{{
+			Tags: []jsonModel.KeyValue{{
 				Key:   "dummy",
 				Value: "dummy",
 			}},
 		},
 		"t1_process_2": {
 			ServiceName: "my-pod",
-			Tags: []jaegerModels.KeyValue{{
+			Tags: []jsonModel.KeyValue{{
 				Key:   "dummy",
 				Value: "dummy",
 			}, {
@@ -67,38 +67,38 @@ var trace1 = jaegerModels.Trace{
 	},
 }
 
-var trace2 = jaegerModels.Trace{
-	Spans: []jaegerModels.Span{{
+var trace2 = jsonModel.Trace{
+	Spans: []jsonModel.Span{{
 		ProcessID:     "t2_process_1",
 		OperationName: "reviews.default.svc.cluster.local:8000/*",
-		Tags: []jaegerModels.KeyValue{{
+		Tags: []jsonModel.KeyValue{{
 			Key:   "node_id",
 			Value: "sidecar~172.17.0.20~reviews-6d8996bff-ztg6z.default~default.svc.cluster.local",
 		}},
 	}, {
 		ProcessID:     "t2_process_2",
 		OperationName: "rating.default.svc.cluster.local:8000/*",
-		Tags: []jaegerModels.KeyValue{{
+		Tags: []jsonModel.KeyValue{{
 			Key:   "node_id",
 			Value: "sidecar~172.17.0.20~rating-v2-6d8996bff-ztg6z.default~default.svc.cluster.local",
 		}},
 	}, {
 		ProcessID:     "t2_process_3",
 		OperationName: "my-operation",
-		Tags:          []jaegerModels.KeyValue{},
+		Tags:          []jsonModel.KeyValue{},
 	}},
-	Processes: map[jaegerModels.ProcessID]jaegerModels.Process{
+	Processes: map[jsonModel.ProcessID]jsonModel.Process{
 		"t2_process_1": {
 			ServiceName: "reviews.default",
-			Tags:        []jaegerModels.KeyValue{},
+			Tags:        []jsonModel.KeyValue{},
 		},
 		"t2_process_2": {
 			ServiceName: "rating.default",
-			Tags:        []jaegerModels.KeyValue{},
+			Tags:        []jsonModel.KeyValue{},
 		},
 		"t2_process_3": {
 			ServiceName: "rating",
-			Tags: []jaegerModels.KeyValue{{
+			Tags: []jsonModel.KeyValue{{
 				Key:   "hostname",
 				Value: "rating-v2-6d8996bff-ztg6z",
 			}},
@@ -106,11 +106,11 @@ var trace2 = jaegerModels.Trace{
 	},
 }
 
-var waypointTrace = jaegerModels.Trace{
-	Spans: []jaegerModels.Span{{
+var waypointTrace = jsonModel.Trace{
+	Spans: []jsonModel.Span{{
 		ProcessID:     "t1_process_1",
 		OperationName: "reviews.default.svc.cluster.local:8000/*",
-		Tags: []jaegerModels.KeyValue{{
+		Tags: []jsonModel.KeyValue{{
 			Key:   "dummy",
 			Value: "dummy",
 		}, {
@@ -120,28 +120,28 @@ var waypointTrace = jaegerModels.Trace{
 	}, {
 		ProcessID:     "t1_process_2",
 		OperationName: "my-operation",
-		Tags: []jaegerModels.KeyValue{{
+		Tags: []jsonModel.KeyValue{{
 			Key:   "dummy",
 			Value: "dummy",
 		}},
 	}},
-	Processes: map[jaegerModels.ProcessID]jaegerModels.Process{
+	Processes: map[jsonModel.ProcessID]jsonModel.Process{
 		"t1_process_1": {
 			ServiceName: "waypoint.default",
-			Tags:        []jaegerModels.KeyValue{},
+			Tags:        []jsonModel.KeyValue{},
 		},
 		"t1_process_2": {
 			ServiceName: "bookinfo-gateway-istio.default",
-			Tags:        []jaegerModels.KeyValue{},
+			Tags:        []jsonModel.KeyValue{},
 		},
 	},
 }
 
-var ambientTagTrace = jaegerModels.Trace{
-	Spans: []jaegerModels.Span{{
+var ambientTagTrace = jsonModel.Trace{
+	Spans: []jsonModel.Span{{
 		ProcessID:     "at_process_1",
 		OperationName: "waypoint-proxy-operation",
-		Tags: []jaegerModels.KeyValue{{
+		Tags: []jsonModel.KeyValue{{
 			Key:   "istio.destination_workload",
 			Value: "reviews-v1",
 		}, {
@@ -158,10 +158,10 @@ var ambientTagTrace = jaegerModels.Trace{
 			Value: "default",
 		}},
 	}},
-	Processes: map[jaegerModels.ProcessID]jaegerModels.Process{
+	Processes: map[jsonModel.ProcessID]jsonModel.Process{
 		"at_process_1": {
 			ServiceName: "waypoint.default",
-			Tags:        []jaegerModels.KeyValue{},
+			Tags:        []jsonModel.KeyValue{},
 		},
 	},
 }
@@ -180,7 +180,7 @@ func TestTracesToSpanWithoutFilter(t *testing.T) {
 	assert := assert.New(t)
 
 	r := models.TracingResponse{
-		Data:               []jaegerModels.Trace{trace1, trace2},
+		Data:               []jsonModel.Trace{trace1, trace2},
 		TracingServiceName: "reviews.default",
 	}
 	reviewsTracingName := models.TracingName{App: "reviews", Lookup: "reviews"}
@@ -190,7 +190,7 @@ func TestTracesToSpanWithoutFilter(t *testing.T) {
 	assert.Equal("t2_process_1", string(spans[1].ProcessID))
 
 	r = models.TracingResponse{
-		Data:               []jaegerModels.Trace{trace1, trace2},
+		Data:               []jsonModel.Trace{trace1, trace2},
 		TracingServiceName: "rating.default",
 	}
 	ratingsTracingName := models.TracingName{App: "rating", Lookup: "rating"}
@@ -204,7 +204,7 @@ func TestTracesToSpanWithServiceFilter(t *testing.T) {
 	assert := assert.New(t)
 
 	r := models.TracingResponse{
-		Data:               []jaegerModels.Trace{trace1, trace2},
+		Data:               []jsonModel.Trace{trace1, trace2},
 		TracingServiceName: "reviews.default",
 	}
 	reviewsTracingName := models.TracingName{App: "reviews", Lookup: "reviews"}
@@ -214,7 +214,7 @@ func TestTracesToSpanWithServiceFilter(t *testing.T) {
 	assert.Equal("t2_process_1", string(spans[1].ProcessID))
 
 	r = models.TracingResponse{
-		Data:               []jaegerModels.Trace{trace1, trace2},
+		Data:               []jsonModel.Trace{trace1, trace2},
 		TracingServiceName: "rating.default",
 	}
 	ratingsTracingName := models.TracingName{App: "rating", Lookup: "rating"}
@@ -227,7 +227,7 @@ func TestTracesToSpanWithWorkloadFilter(t *testing.T) {
 	assert := assert.New(t)
 
 	r := models.TracingResponse{
-		Data:               []jaegerModels.Trace{trace1, trace2},
+		Data:               []jsonModel.Trace{trace1, trace2},
 		TracingServiceName: "reviews.default",
 	}
 	tracingName := models.TracingName{App: "reviews", Workload: "reviews", Lookup: "reviews"}
@@ -237,7 +237,7 @@ func TestTracesToSpanWithWorkloadFilter(t *testing.T) {
 	assert.Equal("t2_process_1", string(spans[1].ProcessID))
 
 	r = models.TracingResponse{
-		Data:               []jaegerModels.Trace{trace1, trace2},
+		Data:               []jsonModel.Trace{trace1, trace2},
 		TracingServiceName: "rating.default",
 	}
 	tracingRatingsName := models.TracingName{App: "rating", Workload: "rating-v2", Lookup: "rating"}
@@ -251,7 +251,7 @@ func TestTracesToSpanWaypointWithWorkloadFilter(t *testing.T) {
 	assert := assert.New(t)
 
 	r := models.TracingResponse{
-		Data:               []jaegerModels.Trace{waypointTrace},
+		Data:               []jsonModel.Trace{waypointTrace},
 		TracingServiceName: "waypoint.default",
 	}
 	tracingName := models.TracingName{App: "reviews", Workload: "reviews", Lookup: "waypoint", WaypointName: "waypoint"}
@@ -264,7 +264,7 @@ func TestTracesToSpanWaypointWithAmbientTagWorkloadFilter(t *testing.T) {
 	assert := assert.New(t)
 
 	r := models.TracingResponse{
-		Data:               []jaegerModels.Trace{ambientTagTrace},
+		Data:               []jsonModel.Trace{ambientTagTrace},
 		TracingServiceName: "waypoint.default",
 	}
 	tracingName := models.TracingName{App: "reviews", Workload: "reviews-v1", Lookup: "waypoint", WaypointName: "waypoint"}
@@ -276,9 +276,9 @@ func TestOperationSpanFilterMatchesAmbientCanonicalService(t *testing.T) {
 	assert := assert.New(t)
 
 	filter := operationSpanFilter(context.Background(), "default", "reviews")
-	span := jaegerModels.Span{
+	span := jsonModel.Span{
 		OperationName: "does-not-have-service-prefix",
-		Tags: []jaegerModels.KeyValue{
+		Tags: []jsonModel.KeyValue{
 			{Key: "istio.destination_canonical_service", Value: "reviews"},
 			{Key: "istio.destination_namespace", Value: "default"},
 		},
@@ -289,25 +289,25 @@ func TestOperationSpanFilterMatchesAmbientCanonicalService(t *testing.T) {
 func TestTracesToSpanWaypointWithAmbientTagsDoNotFallbackToAppPrefix(t *testing.T) {
 	assert := assert.New(t)
 
-	trace := jaegerModels.Trace{
-		Spans: []jaegerModels.Span{{
+	trace := jsonModel.Trace{
+		Spans: []jsonModel.Span{{
 			ProcessID:     "at_process_1",
 			OperationName: "reviews.default.svc.cluster.local:9080/*",
-			Tags: []jaegerModels.KeyValue{
+			Tags: []jsonModel.KeyValue{
 				{Key: "istio.destination_workload", Value: "reviews-v1"},
 				{Key: "istio.destination_namespace", Value: "default"},
 			},
 		}},
-		Processes: map[jaegerModels.ProcessID]jaegerModels.Process{
+		Processes: map[jsonModel.ProcessID]jsonModel.Process{
 			"at_process_1": {
 				ServiceName: "waypoint.default",
-				Tags:        []jaegerModels.KeyValue{},
+				Tags:        []jsonModel.KeyValue{},
 			},
 		},
 	}
 
 	r := models.TracingResponse{
-		Data:               []jaegerModels.Trace{trace},
+		Data:               []jsonModel.Trace{trace},
 		TracingServiceName: "waypoint.default",
 	}
 	tracingName := models.TracingName{App: "reviews", Workload: "reviews-v2", Lookup: "waypoint", WaypointName: "waypoint"}

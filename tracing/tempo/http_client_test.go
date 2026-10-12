@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/kiali/kiali/models"
-	"github.com/kiali/kiali/tracing/jaeger/model/json"
+	"github.com/kiali/kiali/models/tracing/json"
 )
 
 const (

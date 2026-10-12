@@ -14,8 +14,8 @@ import (
 	"github.com/kiali/kiali/config"
 	"github.com/kiali/kiali/kubernetes/kubetest"
 	"github.com/kiali/kiali/models"
+	jsonModel "github.com/kiali/kiali/models/tracing/json"
 	"github.com/kiali/kiali/tracing"
-	jaegerModels "github.com/kiali/kiali/tracing/jaeger/model/json"
 	"github.com/kiali/kiali/util"
 )
 
@@ -129,13 +129,13 @@ func TestExecute_Validation(t *testing.T) {
 }
 
 func TestSummarizeTrace_BottlenecksAndErrorChain(t *testing.T) {
-	trace := jaegerModels.Trace{
+	trace := jsonModel.Trace{
 		TraceID: "trace-1",
-		Processes: map[jaegerModels.ProcessID]jaegerModels.Process{
+		Processes: map[jsonModel.ProcessID]jsonModel.Process{
 			"p1": {ServiceName: "frontend"},
 			"p2": {ServiceName: "backend"},
 		},
-		Spans: []jaegerModels.Span{
+		Spans: []jsonModel.Span{
 			{
 				SpanID:        "root-a",
 				OperationName: "GET /",
@@ -149,10 +149,10 @@ func TestSummarizeTrace_BottlenecksAndErrorChain(t *testing.T) {
 				ProcessID:     "p2",
 				StartTime:     1200,
 				Duration:      500,
-				References: []jaegerModels.Reference{
-					{RefType: jaegerModels.ChildOf, SpanID: "root-a"},
+				References: []jsonModel.Reference{
+					{RefType: jsonModel.ChildOf, SpanID: "root-a"},
 				},
-				Tags: []jaegerModels.KeyValue{
+				Tags: []jsonModel.KeyValue{
 					{Key: "error", Type: "bool", Value: true},
 					{Key: "http.status_code", Type: "string", Value: "500"},
 				},
@@ -366,26 +366,26 @@ func TestExecute_WithTraces_Returns200WithSummary(t *testing.T) {
 	conf := config.NewConfig()
 	conf.ExternalServices.Tracing.Enabled = true
 
-	sampleTrace := jaegerModels.Trace{
+	sampleTrace := jsonModel.Trace{
 		TraceID: "aabb",
-		Processes: map[jaegerModels.ProcessID]jaegerModels.Process{
+		Processes: map[jsonModel.ProcessID]jsonModel.Process{
 			"p1": {ServiceName: "ratings"},
 		},
-		Spans: []jaegerModels.Span{
+		Spans: []jsonModel.Span{
 			{
 				SpanID:        "s1",
 				OperationName: "GET /ratings",
 				ProcessID:     "p1",
 				StartTime:     1000,
 				Duration:      5000,
-				Tags:          []jaegerModels.KeyValue{{Key: "http.status_code", Type: "string", Value: "200"}},
+				Tags:          []jsonModel.KeyValue{{Key: "http.status_code", Type: "string", Value: "200"}},
 			},
 		},
 	}
 
 	fake := &fakeTracingClient{
 		appTraces: &models.TracingResponse{
-			Data: []jaegerModels.Trace{sampleTrace},
+			Data: []jsonModel.Trace{sampleTrace},
 		},
 		traceDetail: &models.TracingSingleTrace{
 			Data: sampleTrace,
