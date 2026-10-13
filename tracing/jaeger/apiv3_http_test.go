@@ -452,28 +452,36 @@ func TestKeepTracesWithTagsComparesText(t *testing.T) {
 	assert.Equal(t, []string{"spread"}, traceIDs(keepTracesWithTags(traces, map[string]string{"code": "503", "resource.k8s.namespace.name": "x"})))
 }
 
-// A request the builder refuses never reaches the backend.
+// A request the builder refuses never reaches the backend, and neither does a window nothing can
+// match, which is answered as an empty list.
 func TestHTTPGuardsSendNothing(t *testing.T) {
 	inverted := searchQuery()
 	inverted.Start, inverted.End = inverted.End, inverted.Start
 
-	for name, tc := range map[string]struct {
-		q       models.TracingQuery
-		service string
-	}{
-		"inverted window": {q: inverted, service: "waypoint.tracegen"},
-		"equal window":    {q: models.TracingQuery{End: inverted.End, Start: inverted.End}, service: "waypoint.tracegen"},
-		"zero window":     {q: models.TracingQuery{}, service: "waypoint.tracegen"},
-		"no service":      {q: searchQuery(), service: ""},
+	for name, q := range map[string]models.TracingQuery{
+		"inverted window": inverted,
+		"equal window":    {End: inverted.End, Start: inverted.End},
+		"zero window":     {},
 	} {
 		t.Run(name, func(t *testing.T) {
 			base, rec := fakeJaeger(t, http.StatusOK, readFixture(t, apiv3SearchHTTP217))
-			_, err := NewHTTPClient().GetAppTracesHTTP(context.Background(), http.Client{}, base, tc.service, tc.q)
-			require.Error(t, err)
+			response, err := NewHTTPClient().GetAppTracesHTTP(context.Background(), http.Client{}, base, "waypoint.tracegen", q)
+			require.NoError(t, err)
+			require.NotNil(t, response.Data)
+			assert.Empty(t, response.Data)
+			assert.Equal(t, "waypoint.tracegen", response.TracingServiceName)
 			_, _, requests := rec.snapshot()
 			assert.Zero(t, requests)
 		})
 	}
+
+	t.Run("no service", func(t *testing.T) {
+		base, rec := fakeJaeger(t, http.StatusOK, readFixture(t, apiv3SearchHTTP217))
+		_, err := NewHTTPClient().GetAppTracesHTTP(context.Background(), http.Client{}, base, "", searchQuery())
+		require.Error(t, err)
+		_, _, requests := rec.snapshot()
+		assert.Zero(t, requests)
+	})
 
 	base, rec := fakeJaeger(t, http.StatusOK, readFixture(t, apiv3TraceHTTP217))
 	_, err := NewHTTPClient().GetTraceDetailHTTP(context.Background(), http.Client{}, base, "../services")

@@ -330,10 +330,13 @@ func TestGRPCSearchGuardsSendNothing(t *testing.T) {
 
 	_, err := client.FindTraces(context.Background(), "", searchQuery())
 	require.Error(t, err)
-	_, err = client.FindTraces(context.Background(), "waypoint.tracegen", models.TracingQuery{})
-	require.Error(t, err)
-	_, err = client.FindTraces(context.Background(), "waypoint.tracegen", inverted)
-	require.Error(t, err)
+	// A window nothing can match is an empty answer rather than an error.
+	for _, q := range []models.TracingQuery{{}, inverted} {
+		response, err := client.FindTraces(context.Background(), "waypoint.tracegen", q)
+		require.NoError(t, err)
+		require.NotNil(t, response.Data)
+		assert.Empty(t, response.Data)
+	}
 	assert.Empty(t, fake.requests())
 }
 

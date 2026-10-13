@@ -319,66 +319,61 @@ func TestAttributesAreCopiedFromTheQuery(t *testing.T) {
 	assert.Equal(map[string]string{models.IstioClusterTag: "cluster1"}, tq.proto().GetQuery().GetAttributes())
 }
 
-// A query api_v3 cannot express is refused here rather than sent, because no backend refuses all
-// three and no two of them refuse one alike. Each case carries what the three lab Jaegers
-// measurably answer it, and the error has to name the field that was wrong: a guard that refuses
-// every malformed query with one message leaves the caller nothing to act on, and the three
-// faults have nothing in common beyond being unsearchable.
-func TestFindTracesRefusesAQueryItCannotExpress(t *testing.T) {
+// A search without a service name is refused here rather than sent, because every version
+// answers it with every service's traces, on both transports.
+func TestFindTracesRefusesASearchWithoutAService(t *testing.T) {
+	tq, err := newTraceQuery("", models.TracingQuery{Start: windowStart, End: windowEnd})
+	require.Error(t, err)
+	assert.Nil(t, tq)
+	assert.ErrorContains(t, err, "a service name is required")
+	assert.NotErrorIs(t, err, errEmptyResult)
+}
+
+// A window nothing can match is answered as an empty result without a request. Each case carries
+// what the lab Jaegers measurably answer it, which differs by version and transport for a question
+// whose answer is not in doubt.
+func TestAWindowNothingCanMatchIsAnEmptyResult(t *testing.T) {
 	cases := map[string]struct {
-		// because is the measured backend answer the guard stands in for.
+		// because is the measured backend answer the empty result stands in for.
 		because string
-		// names is what the refusal has to say, so the caller learns which field to fix.
-		names       string
-		query       models.TracingQuery
-		serviceName string
+		query   models.TracingQuery
 	}{
-		"no service name": {
-			serviceName: "",
-			query:       models.TracingQuery{Start: windowStart, End: windowEnd},
-			names:       "a service name is required",
-			because:     "every version answers it with every service's traces, on both transports",
-		},
-		"no start": {
-			serviceName: "waypoint.tp-abc",
-			query:       models.TracingQuery{End: windowEnd},
-			names:       "a start and an end are required",
-			because:     "a missing bound renders as the year 1, which is the zero-width window below",
-		},
 		"no end": {
-			serviceName: "waypoint.tp-abc",
-			query:       models.TracingQuery{Start: windowStart},
-			names:       "a start and an end are required",
-			because:     "a missing bound renders as the year 1, which is the zero-width window below",
+			query:   models.TracingQuery{Start: windowStart},
+			because: "the zero end renders as the year 1, before any start",
 		},
 		"no window": {
-			serviceName: "waypoint.tp-abc",
-			query:       models.TracingQuery{},
-			names:       "a start and an end are required",
-			because:     "both bounds render as the year 1: 2.17.0 over HTTP answers 200 with every trace in the store, while gRPC answers Unknown on 2.17.0 and InvalidArgument later",
+			query:   models.TracingQuery{},
+			because: "both bounds render as the year 1: 2.17.0 over HTTP answers 200 with every trace in the store, while gRPC answers Unknown on 2.17.0 and InvalidArgument later",
 		},
 		"an empty window": {
-			serviceName: "waypoint.tp-abc",
-			query:       models.TracingQuery{Start: windowEnd, End: windowEnd},
-			names:       "must be before",
-			because:     "2.17.0 answers 404 \"No traces found\" over HTTP, 2.20.0 and 2.21.0 answer 400, and every version answers OK with no message over gRPC",
+			query:   models.TracingQuery{Start: windowEnd, End: windowEnd},
+			because: "2.17.0 answers 404 \"No traces found\" over HTTP, 2.20.0 and 2.21.0 answer 400, and every version answers OK with no message over gRPC",
 		},
 		"an inverted window": {
-			serviceName: "waypoint.tp-abc",
-			query:       models.TracingQuery{Start: windowEnd, End: windowStart},
-			names:       "must be before",
-			because:     "2.17.0 answers 404 carrying the api_v3 empty-result envelope, so the user is told there are no traces, and every version answers OK with no message over gRPC",
+			query:   models.TracingQuery{Start: windowEnd, End: windowStart},
+			because: "2.17.0 answers 404 carrying the api_v3 empty-result envelope, and every version answers OK with no message over gRPC",
 		},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			tq, err := newTraceQuery(tc.serviceName, tc.query)
-			require.Error(t, err, "this query has to be refused here: %s", tc.because)
+			tq, err := newTraceQuery("waypoint.tp-abc", tc.query)
 			assert.Nil(t, tq)
-			assert.ErrorContains(t, err, tc.names,
-				"and the refusal has to name the field, because the three faults share no fix")
+			assert.ErrorIs(t, err, errEmptyResult, "this window has to be answered here: %s", tc.because)
 		})
 	}
+}
+
+// A zero start is no lower bound, which is what the REST API leaves when startMicros is omitted.
+// Both renderings send the Unix epoch, because gRPC refuses the year 1 the zero time renders as.
+func TestAZeroStartIsTheEpoch(t *testing.T) {
+	tq, err := newTraceQuery("waypoint.tp-abc", models.TracingQuery{End: windowEnd})
+	require.NoError(t, err)
+
+	assert.Equal(t, int64(0), tq.proto().GetQuery().GetStartTimeMin().AsTime().UnixNano())
+	values, err := tq.values()
+	require.NoError(t, err)
+	assert.Equal(t, "1970-01-01T00:00:00Z", values.Get("query.start_time_min"))
 }
 
 // api_v3 takes a trace ID as hex text on both transports, where api_v2 took 16 bytes.

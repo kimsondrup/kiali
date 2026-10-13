@@ -54,28 +54,37 @@ type traceQuery struct {
 }
 
 // newTraceQuery applies the rules api_v3 imposes on a search and reports a query that cannot be
-// expressed as one. The three refusals are load-bearing, because the backend answers each of
-// them rather than refusing it: a search with no service name answers with every service's
-// traces; a zero window, which renders as the year 1, answers every trace in the store on 2.17.0
-// over HTTP; and a window whose start is not before its end is a 404 "No traces found" on 2.17.0
-// over HTTP, a 400 on later versions, and an OK carrying no messages over gRPC, which reads as a
-// store holding no traces.
+// expressed as one.
+//
+// A search with no service name is refused, because the backend answers it rather than refusing
+// it: with every service's traces.
+//
+// A window that is empty or inverted, a zero end among them, is errEmptyResult: nothing can
+// match it, so it is answered as an empty list without a request. Sent, it is a 404 "No traces
+// found" on 2.17.0 over HTTP, a 400 on later versions, and an OK carrying no messages over gRPC,
+// so the two transports would disagree about a query whose answer is not in doubt.
+//
+// A zero start means no lower bound, which is what handlers/queryparams leaves when the REST API
+// is called without startMicros. It is sent as the Unix epoch, because the zero time renders as
+// the year 1, which the gRPC handler refuses (InvalidArgument "start time min and max are
+// required" on 2.20.0, measured) while the HTTP gateway accepts it.
 func newTraceQuery(serviceName string, q models.TracingQuery) (*traceQuery, error) {
 	if serviceName == "" {
 		return nil, errors.New("api_v3 search: a service name is required, because api_v3 answers a query without one with every service's traces")
 	}
-	if q.Start.IsZero() || q.End.IsZero() {
-		return nil, errors.New("api_v3 search: a start and an end are required, because the two transports read a zero window differently")
+	start := q.Start
+	if start.IsZero() {
+		start = time.Unix(0, 0)
 	}
-	if !q.Start.Before(q.End) {
-		return nil, fmt.Errorf("api_v3 search: the start %s must be before the end %s, because the two transports read a window that is empty or inverted differently", formatTime(q.Start), formatTime(q.End))
+	if !start.Before(q.End) {
+		return nil, errEmptyResult
 	}
 
 	tq := &traceQuery{
 		searchDepth:  searchDepth(q.Limit),
 		serviceName:  serviceName,
 		startTimeMax: q.End,
-		startTimeMin: q.Start,
+		startTimeMin: start,
 	}
 	// Copied: the caller keeps its map and adds to it between queries.
 	if len(q.Tags) > 0 {

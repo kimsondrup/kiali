@@ -57,7 +57,8 @@ func NewGRPCClient(client apiv3.QueryServiceClient, timeout time.Duration) *GRPC
 func (c *GRPCClient) FindTraces(ctx context.Context, serviceName string, q models.TracingQuery) (*models.TracingResponse, error) {
 	tq, err := newTraceQuery(serviceName, q)
 	if err != nil {
-		return nil, err
+		// A window nothing can match is an empty answer, and is given without a request.
+		return searchResponse(serviceName, nil, err)
 	}
 	request := tq.proto()
 
