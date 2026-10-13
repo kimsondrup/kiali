@@ -391,6 +391,16 @@ func TracingConfigurationCheck(
 			RespondWithError(w, http.StatusInternalServerError, "Tracing configuration is not valid: "+err.Error())
 			return
 		}
+		// The form may leave the provider out, and Jaeger is the provider an empty one has always
+		// meant. Anything else is held to the list config load accepts, so the check cannot pass
+		// a configuration Kiali would refuse to start with.
+		if tracingConfig.Provider == "" {
+			tracingConfig.Provider = config.JaegerProvider
+		}
+		if !tracingConfig.Provider.IsValid() {
+			RespondWithError(w, http.StatusBadRequest, fmt.Sprintf("Tracing configuration is not valid: unknown provider [%s]", tracingConfig.Provider))
+			return
+		}
 
 		business, err := getLayer(r, conf, kialiCache, clientFactory, cpm, prom, traceClientLoader, grafana, discovery)
 		if err != nil {

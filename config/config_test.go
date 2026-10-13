@@ -1919,3 +1919,11 @@ kiali_feature_flags:
 		assert.Contains(t, buf.String(), "DEPRECATION NOTICE: 'kiali_feature_flags.ui_defaults.i18n.show_selector' has been deprecated")
 	})
 }
+
+func TestTracingProviderIsValid(t *testing.T) {
+	assert.True(t, JaegerProvider.IsValid())
+	assert.True(t, TempoProvider.IsValid())
+	assert.False(t, TracingProvider("").IsValid())
+	assert.False(t, TracingProvider("zipkin").IsValid())
+	assert.False(t, TracingProvider("Jaeger").IsValid())
+}

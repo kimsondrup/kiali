@@ -125,7 +125,7 @@ func newClient(ctx context.Context, conf *config.Config, token string) (*Client,
 	if provider == "" {
 		provider = config.JaegerProvider
 	}
-	if provider != config.JaegerProvider && provider != config.TempoProvider {
+	if !provider.IsValid() {
 		return nil, fmt.Errorf("unknown tracing provider [%s]: it must be [%s] or [%s]", provider, config.JaegerProvider, config.TempoProvider)
 	}
 

@@ -207,6 +207,13 @@ const (
 	TempoProvider  TracingProvider = "tempo"
 )
 
+// IsValid reports whether Kiali has a client for the provider. Config load and the
+// /api/tracing/check endpoint both ask it, so a posted configuration is held to the same list as
+// a loaded one.
+func (p TracingProvider) IsValid() bool {
+	return p == JaegerProvider || p == TempoProvider
+}
+
 // TracingCollectorType is the type of collector that Kiali will export traces to.
 // These are traces that kiali generates for itself.
 type TracingCollectorType string
@@ -2313,7 +2320,7 @@ func Validate(conf *Config) error {
 
 	// Check the tracing section
 	cfgTracing := conf.ExternalServices.Tracing
-	if cfgTracing.Enabled && cfgTracing.Provider != JaegerProvider && cfgTracing.Provider != TempoProvider {
+	if cfgTracing.Enabled && !cfgTracing.Provider.IsValid() {
 		return fmt.Errorf("error in configuration options for the external services tracing provider. Invalid provider type [%s]", cfgTracing.Provider)
 	}
 
