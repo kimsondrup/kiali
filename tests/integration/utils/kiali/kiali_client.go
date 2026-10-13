@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	neturl "net/url"
 	"os"
 	"time"
 
@@ -289,8 +290,41 @@ func ServiceDetails(name, namespace string) (*ServiceDetailsJson, int, error) {
 	}
 }
 
+// TraceSearch carries the parameters of a trace or span query other than the window.
+//
+// Both used to be baked into the URL as "tags=&limit=100", so no test could send a tag
+// filter. A tag filter is the request shape a tracing backend can answer 200 and wrong:
+// a filter the backend ignores returns every trace in the window, which reads exactly
+// like a filter that matched everything.
+type TraceSearch struct {
+	// Limit bounds the search depth. Anything but a positive number omits the
+	// parameter, and the handler then applies its own default.
+	Limit int
+
+	// Tags is what the tags parameter carries, a JSON object. Empty sends the
+	// parameter empty, which is what every call sent before.
+	Tags string
+}
+
+// DefaultTraceSearch is the search every call sent before these parameters were the caller's.
+func DefaultTraceSearch() TraceSearch {
+	return TraceSearch{Limit: 100}
+}
+
+func (s TraceSearch) params() string {
+	params := "tags=" + neturl.QueryEscape(s.Tags)
+	if s.Limit > 0 {
+		params += fmt.Sprintf("&limit=%d", s.Limit)
+	}
+	return params
+}
+
 func Traces(objectType, name, namespace string) (*models.TracingResponse, int, error) {
-	url := fmt.Sprintf("%s/api/namespaces/%s/%s/%s/traces?startMicros=%d&tags=&limit=100", client.kialiURL, namespace, objectType, name, TimeSince())
+	return TracesWithSearch(objectType, name, namespace, DefaultTraceSearch())
+}
+
+func TracesWithSearch(objectType, name, namespace string, search TraceSearch) (*models.TracingResponse, int, error) {
+	url := fmt.Sprintf("%s/api/namespaces/%s/%s/%s/traces?startMicros=%d&%s", client.kialiURL, namespace, objectType, name, TimeSince(), search.params())
 	traces := new(models.TracingResponse)
 
 	code, err := getRequestAndUnmarshalIntoWithCustomTimeout(url, TIMEOUT_TRACING, traces)
@@ -314,12 +348,54 @@ func TraceDetail(traceID string) (*models.TracingSingleTrace, int, error) {
 }
 
 func Spans(objectType, name, namespace string) ([]models.TracingSpan, int, error) {
-	url := fmt.Sprintf("%s/api/namespaces/%s/%s/%s/spans?startMicros=%d&tags=&limit=100", client.kialiURL, namespace, objectType, name, TimeSince())
+	return SpansWithSearch(objectType, name, namespace, DefaultTraceSearch())
+}
+
+func SpansWithSearch(objectType, name, namespace string, search TraceSearch) ([]models.TracingSpan, int, error) {
+	url := fmt.Sprintf("%s/api/namespaces/%s/%s/%s/spans?startMicros=%d&%s", client.kialiURL, namespace, objectType, name, TimeSince(), search.params())
 	spans := new([]models.TracingSpan)
 
 	code, err := getRequestAndUnmarshalIntoWithCustomTimeout(url, TIMEOUT_TRACING, spans)
 	if err == nil {
 		return *spans, code, nil
+	} else {
+		return nil, code, err
+	}
+}
+
+// ErrorTraces counts the traces in error for an app.
+//
+// It is the only tracing route that reaches the backend with no limit of its own: the
+// trace and span routes default their limit to 100 and reject a non-positive one, while
+// this one is built from the duration alone and synthesises the tag error=true.
+func ErrorTraces(namespace, app string, duration time.Duration) (int, int, error) {
+	url := fmt.Sprintf("%s/api/namespaces/%s/apps/%s/errortraces?duration=%d", client.kialiURL, namespace, app, int64(duration.Seconds()))
+	errorTraces := new(int)
+
+	code, err := getRequestAndUnmarshalIntoWithCustomTimeout(url, TIMEOUT_TRACING, errorTraces)
+	if err == nil {
+		return *errorTraces, code, nil
+	} else {
+		return 0, code, err
+	}
+}
+
+// TracingConfigCheck probes a tracing configuration without installing it.
+//
+// It is the one endpoint that builds a tracing client out of a posted config and talks
+// to the store with it, so a provider and transport pair can be tried against a running
+// Kiali with no configmap change and no pod restart.
+func TracingConfigCheck(tracingConfig config.TracingConfig) (*models.ConfigurationValidation, int, error) {
+	url := fmt.Sprintf("%s/api/tracing/check", client.kialiURL)
+	requestBody, err := json.Marshal(tracingConfig)
+	if err != nil {
+		return nil, 0, err
+	}
+	validation := new(models.ConfigurationValidation)
+
+	code, err := postRequestAndUnmarshalInto(url, requestBody, TIMEOUT_TRACING, validation)
+	if err == nil {
+		return validation, code, nil
 	} else {
 		return nil, code, err
 	}
@@ -538,6 +614,24 @@ func Grafana() (*models.GrafanaInfo, int, error) {
 	} else {
 		return nil, code, err
 	}
+}
+
+func postRequestAndUnmarshalInto[T any](url string, requestBody []byte, timeout time.Duration, response *T) (int, error) {
+	body, code, _, err := httpPOSTWithRetry(url, client.GetAuth(), requestBody, timeout, nil, config.NewConfig())
+	if err != nil {
+		return code, err
+	}
+
+	if code != http.StatusOK {
+		return code, fmt.Errorf("non 200 response code: %d from url: %s. Body: %s", code, url, body)
+	}
+
+	err = json.Unmarshal(body, response)
+	if err != nil {
+		return code, fmt.Errorf("unable to unmarshal body into response: %T. Body: %s", response, body)
+	}
+
+	return code, nil
 }
 
 func getRequestAndUnmarshalInto[T any](url string, response *T) (int, error) {

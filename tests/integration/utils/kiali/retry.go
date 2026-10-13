@@ -1,6 +1,7 @@
 package kiali
 
 import (
+	"bytes"
 	"net/http"
 	"time"
 
@@ -28,6 +29,22 @@ func httpGETWithRetry(url string, auth *config.Auth, timeout time.Duration, cust
 	var err error
 	err = withRetry(func() error {
 		body, code, cookies, err = httputil.HttpGet(url, auth, timeout, customHeaders, cookies, conf)
+		return err
+	}, 3)
+	return body, code, cookies, err
+}
+
+// httpPOSTWithRetry wraps the httpPOST function with retries.
+//
+// The body arrives as a byte slice and not as an io.Reader because a Reader is drained
+// by the first attempt, so a retry would post an empty body.
+func httpPOSTWithRetry(url string, auth *config.Auth, requestBody []byte, timeout time.Duration, customHeaders map[string]string, conf *config.Config) ([]byte, int, []*http.Cookie, error) {
+	var body []byte
+	var code int
+	var cookies []*http.Cookie
+	var err error
+	err = withRetry(func() error {
+		body, code, cookies, err = httputil.HttpPost(url, auth, bytes.NewReader(requestBody), timeout, customHeaders, conf)
 		return err
 	}, 3)
 	return body, code, cookies, err
