@@ -7,9 +7,14 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/kiali/kiali/config"
+	"github.com/kiali/kiali/tracing/jaeger"
 )
 
 const token = "1234567890"
+
+// The api_v3 HTTP transport is a tracing.HTTPClientInterface. The assertion lives here because
+// package jaeger cannot import package tracing, which imports it.
+var _ HTTPClientInterface = (*jaeger.HTTPClient)(nil)
 
 func TestCreateJaegerClient(t *testing.T) {
 	conf := config.NewConfig()
