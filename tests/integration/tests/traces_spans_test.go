@@ -63,6 +63,11 @@ func TestAppTraces(t *testing.T) {
 // cannot match the detail to the row it was opened from, and the spans have to carry their
 // parent references, or the trace renders as unrelated spans.
 func TestTraceDetail(t *testing.T) {
+	assertTraceDetail(t)
+}
+
+func assertTraceDetail(t *testing.T) {
+	t.Helper()
 	require := require.New(t)
 	traces, statusCode, err := kiali.Traces("services", "details", kiali.BOOKINFO)
 	assertTraces(traces, statusCode, err, require)
@@ -325,6 +330,11 @@ func carriesKey(span jsonModel.Span, key string) bool {
 // reach the browser as the same 404, not as an empty 200 on one transport and a 503 on
 // the other.
 func TestUnknownTraceDetail(t *testing.T) {
+	assertUnknownTraceDetail(t)
+}
+
+func assertUnknownTraceDetail(t *testing.T) {
+	t.Helper()
 	require := require.New(t)
 
 	traceID := randomTraceID(t)
