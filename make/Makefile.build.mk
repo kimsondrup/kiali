@@ -99,6 +99,23 @@ test: .ensure-envtest-bin-dir-exists
 	@echo Running tests, excluding third party tests under vendor
 	${GO} test -tags exclude_frontend ${GO_TEST_FLAGS} $(shell ${GO} list -tags exclude_frontend ./... | grep -v -e /vendor/ -e /frontend/ -e /tests/integration/)
 
+## test-tracing-contract: Pin the backend contract Kiali's tracing clients depend on, against live trace stores
+# Needs no cluster and no Kiali, only reachable stores. Every test skips with a
+# named reason when its store is not configured, so this is also safe to run
+# with none of the variables set -- it just reports no coverage.
+#   KIALI_CONTRACT_JAEGER_HTTP / _GRPC are comma-separated version=address pairs,
+#   because every assertion here is version-specific.
+#   KIALI_CONTRACT_TEMPO_HTTP / _GRPC are one address each.
+#   KIALI_CONTRACT_SERVICE is the span service.name the window is seeded with and
+#   is required as soon as any store is configured.
+#   KIALI_CONTRACT_CLUSTER_ID is the istio.cluster_id the seeded spans carry
+#   (default: Kubernetes, what istiod stamps when the mesh names no cluster).
+# The live request tests in tracing/jaeger read the same variables.
+test-tracing-contract:
+	@echo Running the tracing contract tests
+	${GO} test ${GO_TEST_FLAGS} -v -count=1 -timeout 10m ./tests/integration/tracingcontract/...
+	${GO} test ${GO_TEST_FLAGS} -v -count=1 -timeout 5m -run 'ALiveJaeger' ./tracing/jaeger/
+
 ## test-integration-setup: Setup go library for converting test result into junit xml
 test-integration-setup:
 	@echo Setting up Integration tests
