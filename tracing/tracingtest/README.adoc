@@ -1,8 +1,8 @@
 === tracingtest fixtures
 
 `mock.go` mocks Kiali's tracing client interfaces. The JSON files beside it are captured
-backend responses, read by the tests in `tracing/tempo`, `tracing/otel/otlp` and
-`tracing/otel/model/converter`.
+backend responses, read by the tests in `tracing/jaeger`, `tracing/tempo`, `tracing/otel/otlp`
+and `tracing/otel/model/converter`.
 
 Each one is recorded below with where it came from and the command that would capture it
 again, because a fixture nobody can refresh is a liability.
@@ -63,25 +63,45 @@ api_v3 is served twice, as HTTP on `/api/v3` and as gRPC on `jaeger.api_v3.Query
 over the same data. Both are worth capturing, because they do not render the same response
 the same way - see `apiv3_trace_http.json` and `apiv3_trace_grpc.json` below.
 
-Over HTTP the attributes filter is one parameter holding a URL-encoded JSON map. The
-grpc-gateway form `query.attributes[k]=v` is silently ignored: it answers 200 with every
-trace, which reads exactly like a backend that cannot filter.
+Over HTTP every query parameter is snake_case, and the depth is `query.num_traces`. Those are
+the only spellings Jaeger 2.17.0 - the version Istio 1.31's addon ships - reads: it refuses the
+camelCase `query.startTimeMin`/`query.startTimeMax` with a 400, silently ignores camelCase
+`query.durationMin` and `query.operationName`, and ignores `query.search_depth`, so a search
+spelling the depth that way has none and answers 500 "search depth must be greater than 0".
+Jaeger 2.20 and later read both spellings, and there `query.search_depth` wins over
+`query.num_traces` when both are sent, so never send it. These are the parameters
+`tracing/jaeger/apiv3req.go` sends, measured on 2.17.0, 2.20.0 and 2.21.0.
+
+The attributes filter is one parameter holding a URL-encoded JSON map. The grpc-gateway form
+`query.attributes[k]=v` is silently ignored by every version: it answers 200 with every trace,
+which reads exactly like a backend that cannot filter. And 2.17.0's gateway ignores
+`query.attributes` in *every* spelling - measured on the window of `apiv3_search_http_217.json`,
+`{"error":"true"}` answers all four traces on 2.17.0 and the two failed ones on 2.20.0 and
+2.21.0 - which is why Kiali's HTTP transport filters again after converting. Over gRPC every
+version honours it.
+
+Two more things 2.17.0 does that later versions do not, neither of which a fixture can show:
+it labels a successful api_v3 answer `text/plain; charset=utf-8` (2.20 and later say
+`application/json`), and every version labels its error envelope `text/plain`. So nothing
+reading these may go by the content type.
 
 [source,shell]
 ----
 curl -sG 'http://<jaeger>:16686/api/v3/traces' \
-  --data-urlencode "query.serviceName=waypoint.<namespace>" \
-  --data-urlencode "query.startTimeMin=$(date -u -d '-1 hour'   +%Y-%m-%dT%H:%M:%SZ)" \
-  --data-urlencode "query.startTimeMax=$(date -u -d '+1 minute' +%Y-%m-%dT%H:%M:%SZ)" \
-  --data-urlencode 'query.searchDepth=20' \
-  --data-urlencode "query.attributes=$(jq -nc '{"istio.cluster_id": "cluster1"}')"
+  --data-urlencode "query.service_name=waypoint.<namespace>" \
+  --data-urlencode "query.start_time_min=$(date -u -d '-1 hour'   +%Y-%m-%dT%H:%M:%SZ)" \
+  --data-urlencode "query.start_time_max=$(date -u -d '+1 minute' +%Y-%m-%dT%H:%M:%SZ)" \
+  --data-urlencode 'query.num_traces=20' \
+  --data-urlencode "query.attributes=$(jq -nc '{"istio.cluster_id": "<cluster id>"}')"
 
 curl -s 'http://<jaeger>:16686/api/v3/traces/<trace id>'      # a trace detail
+curl -s 'http://<jaeger>:16686/api/v3/services'               # the service list
 ----
 
 That `istio.cluster_id` attribute is not decoration. Kiali appends
 `tags={"istio.cluster_id":"<its cluster id>"}` to every trace query, so a span without it is
-invisible to Kiali even when the service name matches.
+invisible to Kiali even when the service name matches. The value is whatever istiod stamps,
+which is not always `cluster1`: the lab these 2.17.0 fixtures came from says `Kubernetes`.
 
 Over gRPC, Jaeger publishes no generated Go for api_v3 and its reflection advertises the
 service without serving descriptors, so the protos have to be fetched and their annotation
@@ -93,7 +113,7 @@ jq -n --arg svc "waypoint.<namespace>" \
       --arg min "$(date -u -d '-1 hour'   +%Y-%m-%dT%H:%M:%SZ)" \
       --arg max "$(date -u -d '+1 minute' +%Y-%m-%dT%H:%M:%SZ)" '
   {query: {serviceName: $svc, startTimeMin: $min, startTimeMax: $max, searchDepth: 20,
-           attributes: {"istio.cluster_id": "cluster1"}}}' \
+           attributes: {"istio.cluster_id": "<cluster id>"}}}' \
 | grpcurl -plaintext -import-path <idl> -proto api_v3/query_service.proto \
     -d @ <jaeger>:16685 jaeger.api_v3.QueryService/FindTraces
 ----
@@ -333,3 +353,58 @@ written, so their commands are recorded from the capture rather than re-run. The
 they name (`tp-ntegzp`, `tp-otlp-sf2ed7`) are per-task scratch namespaces and will not exist
 again; a fresh capture uses a fresh one and differs in the service names and the IDs, not in
 the shapes described here.
+
+The next four come from Jaeger *2.17.0*, the version Istio 1.31's `samples/addons/jaeger.yaml`
+ships and so the one Kiali's api_v3 transports are held to first. They were captured over
+HTTP on 2026-10-13 from a kind lab whose only mesh traffic is a waypoint in namespace
+`tracegen` (service `waypoint.tracegen`) in front of podinfo, with a memory store at base path
+`/` - the addon itself uses badger at `/jaeger`. Every trace in that lab is a single Envoy
+span. Each file is the body exactly as answered, pretty-printed; nothing reads the raw bytes.
+
+`apiv3_services_http_217.json`::
+`GET /api/v3/services`: `{"services":[...]}`, which is the shape Kiali's health probe and
+discovery require. Answered as `text/plain`.
++
+[source,shell]
+----
+curl -s 'http://<jaeger217>:16686/api/v3/services'
+----
+
+`apiv3_search_http_217.json`::
+A search for `waypoint.tracegen` whose window holds four traces: two that failed
+(`b7705fb4f9e547db3e51444a957eba03`, a 503, and `2ea535bec9fe41eb90bd2ae18c259e2d`, a 500)
+and two that did not (`a5eb2a617857e9836da580613578ffcf`, `a95d19ab0fe7dd5f4f1ab0698588b558`).
+The failed spans carry the attribute `error` as the *string* `"true"`, which is the only error
+signal Envoy writes: it sets no span status. That mixture is the point of the fixture - it is
+what the HTTP transport's own tag filter is tested against, since 2.17.0 would have answered
+the same four traces with `query.attributes={"error":"true"}` sent.
++
+[source,shell]
+----
+curl -sG 'http://<jaeger217>:16686/api/v3/traces' \
+  --data-urlencode 'query.service_name=waypoint.tracegen' \
+  --data-urlencode 'query.start_time_min=2026-10-13T00:56:17Z' \
+  --data-urlencode 'query.start_time_max=2026-10-13T00:56:17.06Z' \
+  --data-urlencode 'query.num_traces=5'
+----
+
+`apiv3_trace_http_217.json`::
+`GET /api/v3/traces/b7705fb4f9e547db3e51444a957eba03`, the 503 of that search, under the same
+`result` envelope and with the same hex IDs as 2.21.0's detail.
++
+[source,shell]
+----
+curl -s 'http://<jaeger217>:16686/api/v3/traces/b7705fb4f9e547db3e51444a957eba03'
+----
+
+`apiv3_notfound_http.json`::
+The 404 body api_v3 answers for a trace ID the store does not hold, and equally for a search
+that matched nothing: `{"error":{"httpCode":404,"message":"No traces found"}}`, answered as
+`text/plain` with a `Content-Length` rather than chunked. Captured from 2.17.0; 2.20.0 and
+2.21.0 answer the same bytes. It is what tells "nothing" apart from a wrong route, which
+answers 404 too but with the plain text `404 page not found` and no envelope.
++
+[source,shell]
+----
+curl -s 'http://<jaeger217>:16686/api/v3/traces/0123456789abcdef0123456789abcdef'
+----

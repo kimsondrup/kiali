@@ -1,0 +1,1162 @@
+{
+  "result": {
+    "resourceSpans": [
+      {
+        "resource": {
+          "attributes": [
+            {
+              "key": "service.name",
+              "value": {
+                "stringValue": "waypoint.tracegen"
+              }
+            },
+            {
+              "key": "telemetry.sdk.language",
+              "value": {
+                "stringValue": "cpp"
+              }
+            },
+            {
+              "key": "telemetry.sdk.name",
+              "value": {
+                "stringValue": "envoy"
+              }
+            },
+            {
+              "key": "telemetry.sdk.version",
+              "value": {
+                "stringValue": "3bb16354647d089b9a79020c9fc86cbbc5fcf84b/1.39.2-dev/Clean/RELEASE/BoringSSL"
+              }
+            }
+          ]
+        },
+        "scopeSpans": [
+          {
+            "scope": {
+              "name": "envoy",
+              "version": "3bb16354647d089b9a79020c9fc86cbbc5fcf84b/1.39.2-dev/Clean/RELEASE/BoringSSL"
+            },
+            "spans": [
+              {
+                "traceId": "a95d19ab0fe7dd5f4f1ab0698588b558",
+                "spanId": "7765e5add2e55a57",
+                "name": "podinfo.tracegen.svc.cluster.local:9898/*",
+                "kind": 2,
+                "startTimeUnixNano": "1791852977051126000",
+                "endTimeUnixNano": "1791852977052134000",
+                "attributes": [
+                  {
+                    "key": "component",
+                    "value": {
+                      "stringValue": "proxy"
+                    }
+                  },
+                  {
+                    "key": "downstream_cluster",
+                    "value": {
+                      "stringValue": "-"
+                    }
+                  },
+                  {
+                    "key": "guid:x-request-id",
+                    "value": {
+                      "stringValue": "3d576412-b9ac-9188-9fc4-7554bab8ac43"
+                    }
+                  },
+                  {
+                    "key": "http.method",
+                    "value": {
+                      "stringValue": "GET"
+                    }
+                  },
+                  {
+                    "key": "http.protocol",
+                    "value": {
+                      "stringValue": "HTTP/1.1"
+                    }
+                  },
+                  {
+                    "key": "http.status_code",
+                    "value": {
+                      "stringValue": "200"
+                    }
+                  },
+                  {
+                    "key": "http.url",
+                    "value": {
+                      "stringValue": "http://podinfo:9898/"
+                    }
+                  },
+                  {
+                    "key": "istio.canonical_revision",
+                    "value": {
+                      "stringValue": "latest"
+                    }
+                  },
+                  {
+                    "key": "istio.canonical_service",
+                    "value": {
+                      "stringValue": "waypoint"
+                    }
+                  },
+                  {
+                    "key": "istio.cluster_id",
+                    "value": {
+                      "stringValue": "Kubernetes"
+                    }
+                  },
+                  {
+                    "key": "istio.destination_app",
+                    "value": {
+                      "stringValue": "podinfo"
+                    }
+                  },
+                  {
+                    "key": "istio.destination_app_version",
+                    "value": {
+                      "stringValue": "latest"
+                    }
+                  },
+                  {
+                    "key": "istio.destination_canonical_revision",
+                    "value": {
+                      "stringValue": "latest"
+                    }
+                  },
+                  {
+                    "key": "istio.destination_canonical_service",
+                    "value": {
+                      "stringValue": "podinfo"
+                    }
+                  },
+                  {
+                    "key": "istio.destination_cluster_id",
+                    "value": {
+                      "stringValue": "Kubernetes"
+                    }
+                  },
+                  {
+                    "key": "istio.destination_instance_name",
+                    "value": {
+                      "stringValue": "podinfo-6d64dd5548-6npts"
+                    }
+                  },
+                  {
+                    "key": "istio.destination_namespace",
+                    "value": {
+                      "stringValue": "tracegen"
+                    }
+                  },
+                  {
+                    "key": "istio.destination_workload",
+                    "value": {
+                      "stringValue": "podinfo"
+                    }
+                  },
+                  {
+                    "key": "istio.destination_workload_type",
+                    "value": {
+                      "stringValue": "pod"
+                    }
+                  },
+                  {
+                    "key": "istio.mesh_id",
+                    "value": {
+                      "stringValue": "cluster.local"
+                    }
+                  },
+                  {
+                    "key": "istio.namespace",
+                    "value": {
+                      "stringValue": "tracegen"
+                    }
+                  },
+                  {
+                    "key": "istio.source_app",
+                    "value": {
+                      "stringValue": "curl-err-21825"
+                    }
+                  },
+                  {
+                    "key": "istio.source_app_version",
+                    "value": {
+                      "stringValue": "latest"
+                    }
+                  },
+                  {
+                    "key": "istio.source_canonical_revision",
+                    "value": {
+                      "stringValue": "latest"
+                    }
+                  },
+                  {
+                    "key": "istio.source_canonical_service",
+                    "value": {
+                      "stringValue": "curl-err-21825"
+                    }
+                  },
+                  {
+                    "key": "istio.source_cluster_id",
+                    "value": {
+                      "stringValue": "Kubernetes"
+                    }
+                  },
+                  {
+                    "key": "istio.source_instance_name",
+                    "value": {
+                      "stringValue": "curl-err-21825"
+                    }
+                  },
+                  {
+                    "key": "istio.source_namespace",
+                    "value": {
+                      "stringValue": "tracegen"
+                    }
+                  },
+                  {
+                    "key": "istio.source_workload",
+                    "value": {
+                      "stringValue": "curl-err-21825"
+                    }
+                  },
+                  {
+                    "key": "istio.source_workload_type",
+                    "value": {
+                      "stringValue": "pod"
+                    }
+                  },
+                  {
+                    "key": "node_id",
+                    "value": {
+                      "stringValue": "waypoint~10.244.0.15~waypoint-7bd889ccff-qrtdx.tracegen~tracegen.svc.cluster.local"
+                    }
+                  },
+                  {
+                    "key": "peer.address",
+                    "value": {
+                      "stringValue": "envoy://internal_client_address/"
+                    }
+                  },
+                  {
+                    "key": "request_size",
+                    "value": {
+                      "stringValue": "0"
+                    }
+                  },
+                  {
+                    "key": "response_flags",
+                    "value": {
+                      "stringValue": "-"
+                    }
+                  },
+                  {
+                    "key": "response_size",
+                    "value": {
+                      "stringValue": "393"
+                    }
+                  },
+                  {
+                    "key": "upstream_cluster",
+                    "value": {
+                      "stringValue": "inbound-vip|9898|http|podinfo.tracegen.svc.cluster.local"
+                    }
+                  },
+                  {
+                    "key": "upstream_cluster.name",
+                    "value": {
+                      "stringValue": "inbound-vip|9898|http|podinfo.tracegen.svc.cluster.local;"
+                    }
+                  },
+                  {
+                    "key": "user_agent",
+                    "value": {
+                      "stringValue": "curl/8.11.1"
+                    }
+                  },
+                  {
+                    "key": "zone",
+                    "value": {
+                      "stringValue": ""
+                    }
+                  }
+                ],
+                "status": {}
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "resource": {
+          "attributes": [
+            {
+              "key": "service.name",
+              "value": {
+                "stringValue": "waypoint.tracegen"
+              }
+            },
+            {
+              "key": "telemetry.sdk.language",
+              "value": {
+                "stringValue": "cpp"
+              }
+            },
+            {
+              "key": "telemetry.sdk.name",
+              "value": {
+                "stringValue": "envoy"
+              }
+            },
+            {
+              "key": "telemetry.sdk.version",
+              "value": {
+                "stringValue": "3bb16354647d089b9a79020c9fc86cbbc5fcf84b/1.39.2-dev/Clean/RELEASE/BoringSSL"
+              }
+            }
+          ]
+        },
+        "scopeSpans": [
+          {
+            "scope": {
+              "name": "envoy",
+              "version": "3bb16354647d089b9a79020c9fc86cbbc5fcf84b/1.39.2-dev/Clean/RELEASE/BoringSSL"
+            },
+            "spans": [
+              {
+                "traceId": "2ea535bec9fe41eb90bd2ae18c259e2d",
+                "spanId": "a8e9fb6f3a514096",
+                "name": "podinfo.tracegen.svc.cluster.local:9898/*",
+                "kind": 2,
+                "startTimeUnixNano": "1791852977038811000",
+                "endTimeUnixNano": "1791852977040548000",
+                "attributes": [
+                  {
+                    "key": "component",
+                    "value": {
+                      "stringValue": "proxy"
+                    }
+                  },
+                  {
+                    "key": "downstream_cluster",
+                    "value": {
+                      "stringValue": "-"
+                    }
+                  },
+                  {
+                    "key": "error",
+                    "value": {
+                      "stringValue": "true"
+                    }
+                  },
+                  {
+                    "key": "guid:x-request-id",
+                    "value": {
+                      "stringValue": "2bdfb0b0-9c99-9960-a371-70584b476170"
+                    }
+                  },
+                  {
+                    "key": "http.method",
+                    "value": {
+                      "stringValue": "GET"
+                    }
+                  },
+                  {
+                    "key": "http.protocol",
+                    "value": {
+                      "stringValue": "HTTP/1.1"
+                    }
+                  },
+                  {
+                    "key": "http.status_code",
+                    "value": {
+                      "stringValue": "500"
+                    }
+                  },
+                  {
+                    "key": "http.url",
+                    "value": {
+                      "stringValue": "http://podinfo:9898/status/500"
+                    }
+                  },
+                  {
+                    "key": "istio.canonical_revision",
+                    "value": {
+                      "stringValue": "latest"
+                    }
+                  },
+                  {
+                    "key": "istio.canonical_service",
+                    "value": {
+                      "stringValue": "waypoint"
+                    }
+                  },
+                  {
+                    "key": "istio.cluster_id",
+                    "value": {
+                      "stringValue": "Kubernetes"
+                    }
+                  },
+                  {
+                    "key": "istio.destination_app",
+                    "value": {
+                      "stringValue": "podinfo"
+                    }
+                  },
+                  {
+                    "key": "istio.destination_app_version",
+                    "value": {
+                      "stringValue": "latest"
+                    }
+                  },
+                  {
+                    "key": "istio.destination_canonical_revision",
+                    "value": {
+                      "stringValue": "latest"
+                    }
+                  },
+                  {
+                    "key": "istio.destination_canonical_service",
+                    "value": {
+                      "stringValue": "podinfo"
+                    }
+                  },
+                  {
+                    "key": "istio.destination_cluster_id",
+                    "value": {
+                      "stringValue": "Kubernetes"
+                    }
+                  },
+                  {
+                    "key": "istio.destination_instance_name",
+                    "value": {
+                      "stringValue": "podinfo-6d64dd5548-6npts"
+                    }
+                  },
+                  {
+                    "key": "istio.destination_namespace",
+                    "value": {
+                      "stringValue": "tracegen"
+                    }
+                  },
+                  {
+                    "key": "istio.destination_workload",
+                    "value": {
+                      "stringValue": "podinfo"
+                    }
+                  },
+                  {
+                    "key": "istio.destination_workload_type",
+                    "value": {
+                      "stringValue": "pod"
+                    }
+                  },
+                  {
+                    "key": "istio.mesh_id",
+                    "value": {
+                      "stringValue": "cluster.local"
+                    }
+                  },
+                  {
+                    "key": "istio.namespace",
+                    "value": {
+                      "stringValue": "tracegen"
+                    }
+                  },
+                  {
+                    "key": "istio.source_app",
+                    "value": {
+                      "stringValue": "curl-err-21825"
+                    }
+                  },
+                  {
+                    "key": "istio.source_app_version",
+                    "value": {
+                      "stringValue": "latest"
+                    }
+                  },
+                  {
+                    "key": "istio.source_canonical_revision",
+                    "value": {
+                      "stringValue": "latest"
+                    }
+                  },
+                  {
+                    "key": "istio.source_canonical_service",
+                    "value": {
+                      "stringValue": "curl-err-21825"
+                    }
+                  },
+                  {
+                    "key": "istio.source_cluster_id",
+                    "value": {
+                      "stringValue": "Kubernetes"
+                    }
+                  },
+                  {
+                    "key": "istio.source_instance_name",
+                    "value": {
+                      "stringValue": "curl-err-21825"
+                    }
+                  },
+                  {
+                    "key": "istio.source_namespace",
+                    "value": {
+                      "stringValue": "tracegen"
+                    }
+                  },
+                  {
+                    "key": "istio.source_workload",
+                    "value": {
+                      "stringValue": "curl-err-21825"
+                    }
+                  },
+                  {
+                    "key": "istio.source_workload_type",
+                    "value": {
+                      "stringValue": "pod"
+                    }
+                  },
+                  {
+                    "key": "node_id",
+                    "value": {
+                      "stringValue": "waypoint~10.244.0.15~waypoint-7bd889ccff-qrtdx.tracegen~tracegen.svc.cluster.local"
+                    }
+                  },
+                  {
+                    "key": "peer.address",
+                    "value": {
+                      "stringValue": "envoy://internal_client_address/"
+                    }
+                  },
+                  {
+                    "key": "request_size",
+                    "value": {
+                      "stringValue": "0"
+                    }
+                  },
+                  {
+                    "key": "response_flags",
+                    "value": {
+                      "stringValue": "-"
+                    }
+                  },
+                  {
+                    "key": "response_size",
+                    "value": {
+                      "stringValue": "19"
+                    }
+                  },
+                  {
+                    "key": "upstream_cluster",
+                    "value": {
+                      "stringValue": "inbound-vip|9898|http|podinfo.tracegen.svc.cluster.local"
+                    }
+                  },
+                  {
+                    "key": "upstream_cluster.name",
+                    "value": {
+                      "stringValue": "inbound-vip|9898|http|podinfo.tracegen.svc.cluster.local;"
+                    }
+                  },
+                  {
+                    "key": "user_agent",
+                    "value": {
+                      "stringValue": "curl/8.11.1"
+                    }
+                  },
+                  {
+                    "key": "zone",
+                    "value": {
+                      "stringValue": ""
+                    }
+                  }
+                ],
+                "status": {
+                  "code": 2
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "resource": {
+          "attributes": [
+            {
+              "key": "service.name",
+              "value": {
+                "stringValue": "waypoint.tracegen"
+              }
+            },
+            {
+              "key": "telemetry.sdk.language",
+              "value": {
+                "stringValue": "cpp"
+              }
+            },
+            {
+              "key": "telemetry.sdk.name",
+              "value": {
+                "stringValue": "envoy"
+              }
+            },
+            {
+              "key": "telemetry.sdk.version",
+              "value": {
+                "stringValue": "3bb16354647d089b9a79020c9fc86cbbc5fcf84b/1.39.2-dev/Clean/RELEASE/BoringSSL"
+              }
+            }
+          ]
+        },
+        "scopeSpans": [
+          {
+            "scope": {
+              "name": "envoy",
+              "version": "3bb16354647d089b9a79020c9fc86cbbc5fcf84b/1.39.2-dev/Clean/RELEASE/BoringSSL"
+            },
+            "spans": [
+              {
+                "traceId": "b7705fb4f9e547db3e51444a957eba03",
+                "spanId": "5f445603284287e9",
+                "name": "podinfo.tracegen.svc.cluster.local:9898/*",
+                "kind": 2,
+                "startTimeUnixNano": "1791852977024423000",
+                "endTimeUnixNano": "1791852977025827000",
+                "attributes": [
+                  {
+                    "key": "component",
+                    "value": {
+                      "stringValue": "proxy"
+                    }
+                  },
+                  {
+                    "key": "downstream_cluster",
+                    "value": {
+                      "stringValue": "-"
+                    }
+                  },
+                  {
+                    "key": "error",
+                    "value": {
+                      "stringValue": "true"
+                    }
+                  },
+                  {
+                    "key": "guid:x-request-id",
+                    "value": {
+                      "stringValue": "ad881bc0-e4e9-9429-ac33-faf404f32e9a"
+                    }
+                  },
+                  {
+                    "key": "http.method",
+                    "value": {
+                      "stringValue": "GET"
+                    }
+                  },
+                  {
+                    "key": "http.protocol",
+                    "value": {
+                      "stringValue": "HTTP/1.1"
+                    }
+                  },
+                  {
+                    "key": "http.status_code",
+                    "value": {
+                      "stringValue": "503"
+                    }
+                  },
+                  {
+                    "key": "http.url",
+                    "value": {
+                      "stringValue": "http://podinfo:9898/status/503"
+                    }
+                  },
+                  {
+                    "key": "istio.canonical_revision",
+                    "value": {
+                      "stringValue": "latest"
+                    }
+                  },
+                  {
+                    "key": "istio.canonical_service",
+                    "value": {
+                      "stringValue": "waypoint"
+                    }
+                  },
+                  {
+                    "key": "istio.cluster_id",
+                    "value": {
+                      "stringValue": "Kubernetes"
+                    }
+                  },
+                  {
+                    "key": "istio.destination_app",
+                    "value": {
+                      "stringValue": "podinfo"
+                    }
+                  },
+                  {
+                    "key": "istio.destination_app_version",
+                    "value": {
+                      "stringValue": "latest"
+                    }
+                  },
+                  {
+                    "key": "istio.destination_canonical_revision",
+                    "value": {
+                      "stringValue": "latest"
+                    }
+                  },
+                  {
+                    "key": "istio.destination_canonical_service",
+                    "value": {
+                      "stringValue": "podinfo"
+                    }
+                  },
+                  {
+                    "key": "istio.destination_cluster_id",
+                    "value": {
+                      "stringValue": "Kubernetes"
+                    }
+                  },
+                  {
+                    "key": "istio.destination_instance_name",
+                    "value": {
+                      "stringValue": "podinfo-6d64dd5548-6npts"
+                    }
+                  },
+                  {
+                    "key": "istio.destination_namespace",
+                    "value": {
+                      "stringValue": "tracegen"
+                    }
+                  },
+                  {
+                    "key": "istio.destination_workload",
+                    "value": {
+                      "stringValue": "podinfo"
+                    }
+                  },
+                  {
+                    "key": "istio.destination_workload_type",
+                    "value": {
+                      "stringValue": "pod"
+                    }
+                  },
+                  {
+                    "key": "istio.mesh_id",
+                    "value": {
+                      "stringValue": "cluster.local"
+                    }
+                  },
+                  {
+                    "key": "istio.namespace",
+                    "value": {
+                      "stringValue": "tracegen"
+                    }
+                  },
+                  {
+                    "key": "istio.source_app",
+                    "value": {
+                      "stringValue": "curl-err-21825"
+                    }
+                  },
+                  {
+                    "key": "istio.source_app_version",
+                    "value": {
+                      "stringValue": "latest"
+                    }
+                  },
+                  {
+                    "key": "istio.source_canonical_revision",
+                    "value": {
+                      "stringValue": "latest"
+                    }
+                  },
+                  {
+                    "key": "istio.source_canonical_service",
+                    "value": {
+                      "stringValue": "curl-err-21825"
+                    }
+                  },
+                  {
+                    "key": "istio.source_cluster_id",
+                    "value": {
+                      "stringValue": "Kubernetes"
+                    }
+                  },
+                  {
+                    "key": "istio.source_instance_name",
+                    "value": {
+                      "stringValue": "curl-err-21825"
+                    }
+                  },
+                  {
+                    "key": "istio.source_namespace",
+                    "value": {
+                      "stringValue": "tracegen"
+                    }
+                  },
+                  {
+                    "key": "istio.source_workload",
+                    "value": {
+                      "stringValue": "curl-err-21825"
+                    }
+                  },
+                  {
+                    "key": "istio.source_workload_type",
+                    "value": {
+                      "stringValue": "pod"
+                    }
+                  },
+                  {
+                    "key": "node_id",
+                    "value": {
+                      "stringValue": "waypoint~10.244.0.15~waypoint-7bd889ccff-qrtdx.tracegen~tracegen.svc.cluster.local"
+                    }
+                  },
+                  {
+                    "key": "peer.address",
+                    "value": {
+                      "stringValue": "envoy://internal_client_address/"
+                    }
+                  },
+                  {
+                    "key": "request_size",
+                    "value": {
+                      "stringValue": "0"
+                    }
+                  },
+                  {
+                    "key": "response_flags",
+                    "value": {
+                      "stringValue": "-"
+                    }
+                  },
+                  {
+                    "key": "response_size",
+                    "value": {
+                      "stringValue": "19"
+                    }
+                  },
+                  {
+                    "key": "upstream_cluster",
+                    "value": {
+                      "stringValue": "inbound-vip|9898|http|podinfo.tracegen.svc.cluster.local"
+                    }
+                  },
+                  {
+                    "key": "upstream_cluster.name",
+                    "value": {
+                      "stringValue": "inbound-vip|9898|http|podinfo.tracegen.svc.cluster.local;"
+                    }
+                  },
+                  {
+                    "key": "user_agent",
+                    "value": {
+                      "stringValue": "curl/8.11.1"
+                    }
+                  },
+                  {
+                    "key": "zone",
+                    "value": {
+                      "stringValue": ""
+                    }
+                  }
+                ],
+                "status": {
+                  "code": 2
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "resource": {
+          "attributes": [
+            {
+              "key": "service.name",
+              "value": {
+                "stringValue": "waypoint.tracegen"
+              }
+            },
+            {
+              "key": "telemetry.sdk.language",
+              "value": {
+                "stringValue": "cpp"
+              }
+            },
+            {
+              "key": "telemetry.sdk.name",
+              "value": {
+                "stringValue": "envoy"
+              }
+            },
+            {
+              "key": "telemetry.sdk.version",
+              "value": {
+                "stringValue": "3bb16354647d089b9a79020c9fc86cbbc5fcf84b/1.39.2-dev/Clean/RELEASE/BoringSSL"
+              }
+            }
+          ]
+        },
+        "scopeSpans": [
+          {
+            "scope": {
+              "name": "envoy",
+              "version": "3bb16354647d089b9a79020c9fc86cbbc5fcf84b/1.39.2-dev/Clean/RELEASE/BoringSSL"
+            },
+            "spans": [
+              {
+                "traceId": "a5eb2a617857e9836da580613578ffcf",
+                "spanId": "5d2c34e4238b42b2",
+                "name": "podinfo.tracegen.svc.cluster.local:9898/*",
+                "kind": 2,
+                "startTimeUnixNano": "1791852977009298000",
+                "endTimeUnixNano": "1791852977010433000",
+                "attributes": [
+                  {
+                    "key": "component",
+                    "value": {
+                      "stringValue": "proxy"
+                    }
+                  },
+                  {
+                    "key": "downstream_cluster",
+                    "value": {
+                      "stringValue": "-"
+                    }
+                  },
+                  {
+                    "key": "guid:x-request-id",
+                    "value": {
+                      "stringValue": "f33737bb-a370-9ba6-840a-b39b4c9988ba"
+                    }
+                  },
+                  {
+                    "key": "http.method",
+                    "value": {
+                      "stringValue": "GET"
+                    }
+                  },
+                  {
+                    "key": "http.protocol",
+                    "value": {
+                      "stringValue": "HTTP/1.1"
+                    }
+                  },
+                  {
+                    "key": "http.status_code",
+                    "value": {
+                      "stringValue": "200"
+                    }
+                  },
+                  {
+                    "key": "http.url",
+                    "value": {
+                      "stringValue": "http://podinfo:9898/"
+                    }
+                  },
+                  {
+                    "key": "istio.canonical_revision",
+                    "value": {
+                      "stringValue": "latest"
+                    }
+                  },
+                  {
+                    "key": "istio.canonical_service",
+                    "value": {
+                      "stringValue": "waypoint"
+                    }
+                  },
+                  {
+                    "key": "istio.cluster_id",
+                    "value": {
+                      "stringValue": "Kubernetes"
+                    }
+                  },
+                  {
+                    "key": "istio.destination_app",
+                    "value": {
+                      "stringValue": "podinfo"
+                    }
+                  },
+                  {
+                    "key": "istio.destination_app_version",
+                    "value": {
+                      "stringValue": "latest"
+                    }
+                  },
+                  {
+                    "key": "istio.destination_canonical_revision",
+                    "value": {
+                      "stringValue": "latest"
+                    }
+                  },
+                  {
+                    "key": "istio.destination_canonical_service",
+                    "value": {
+                      "stringValue": "podinfo"
+                    }
+                  },
+                  {
+                    "key": "istio.destination_cluster_id",
+                    "value": {
+                      "stringValue": "Kubernetes"
+                    }
+                  },
+                  {
+                    "key": "istio.destination_instance_name",
+                    "value": {
+                      "stringValue": "podinfo-6d64dd5548-6npts"
+                    }
+                  },
+                  {
+                    "key": "istio.destination_namespace",
+                    "value": {
+                      "stringValue": "tracegen"
+                    }
+                  },
+                  {
+                    "key": "istio.destination_workload",
+                    "value": {
+                      "stringValue": "podinfo"
+                    }
+                  },
+                  {
+                    "key": "istio.destination_workload_type",
+                    "value": {
+                      "stringValue": "pod"
+                    }
+                  },
+                  {
+                    "key": "istio.mesh_id",
+                    "value": {
+                      "stringValue": "cluster.local"
+                    }
+                  },
+                  {
+                    "key": "istio.namespace",
+                    "value": {
+                      "stringValue": "tracegen"
+                    }
+                  },
+                  {
+                    "key": "istio.source_app",
+                    "value": {
+                      "stringValue": "curl-err-21825"
+                    }
+                  },
+                  {
+                    "key": "istio.source_app_version",
+                    "value": {
+                      "stringValue": "latest"
+                    }
+                  },
+                  {
+                    "key": "istio.source_canonical_revision",
+                    "value": {
+                      "stringValue": "latest"
+                    }
+                  },
+                  {
+                    "key": "istio.source_canonical_service",
+                    "value": {
+                      "stringValue": "curl-err-21825"
+                    }
+                  },
+                  {
+                    "key": "istio.source_cluster_id",
+                    "value": {
+                      "stringValue": "Kubernetes"
+                    }
+                  },
+                  {
+                    "key": "istio.source_instance_name",
+                    "value": {
+                      "stringValue": "curl-err-21825"
+                    }
+                  },
+                  {
+                    "key": "istio.source_namespace",
+                    "value": {
+                      "stringValue": "tracegen"
+                    }
+                  },
+                  {
+                    "key": "istio.source_workload",
+                    "value": {
+                      "stringValue": "curl-err-21825"
+                    }
+                  },
+                  {
+                    "key": "istio.source_workload_type",
+                    "value": {
+                      "stringValue": "pod"
+                    }
+                  },
+                  {
+                    "key": "node_id",
+                    "value": {
+                      "stringValue": "waypoint~10.244.0.15~waypoint-7bd889ccff-qrtdx.tracegen~tracegen.svc.cluster.local"
+                    }
+                  },
+                  {
+                    "key": "peer.address",
+                    "value": {
+                      "stringValue": "envoy://internal_client_address/"
+                    }
+                  },
+                  {
+                    "key": "request_size",
+                    "value": {
+                      "stringValue": "0"
+                    }
+                  },
+                  {
+                    "key": "response_flags",
+                    "value": {
+                      "stringValue": "-"
+                    }
+                  },
+                  {
+                    "key": "response_size",
+                    "value": {
+                      "stringValue": "393"
+                    }
+                  },
+                  {
+                    "key": "upstream_cluster",
+                    "value": {
+                      "stringValue": "inbound-vip|9898|http|podinfo.tracegen.svc.cluster.local"
+                    }
+                  },
+                  {
+                    "key": "upstream_cluster.name",
+                    "value": {
+                      "stringValue": "inbound-vip|9898|http|podinfo.tracegen.svc.cluster.local;"
+                    }
+                  },
+                  {
+                    "key": "user_agent",
+                    "value": {
+                      "stringValue": "curl/8.11.1"
+                    }
+                  },
+                  {
+                    "key": "zone",
+                    "value": {
+                      "stringValue": ""
+                    }
+                  }
+                ],
+                "status": {}
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}
