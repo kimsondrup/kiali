@@ -2,6 +2,7 @@ package tempo
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -36,6 +37,33 @@ type RoundTripFunc func(req *http.Request) *http.Response
 
 func (f RoundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return f(req), nil
+}
+
+// failingRoundTripper is a transport whose request never reaches a backend, which is what a
+// refused connection or an unusable certificate looks like from here.
+type failingRoundTripper struct {
+	err error
+}
+
+func (f failingRoundTripper) RoundTrip(*http.Request) (*http.Response, error) {
+	return nil, f.err
+}
+
+// TestGetServicesReportsARequestError covers a request that did not reach Tempo. There is no body
+// to read then, so unmarshalling one reports an empty JSON input and the reason the request
+// failed is lost - and the caller is told the backend answered something it could not read when
+// in fact it answered nothing.
+func TestGetServicesReportsARequestError(t *testing.T) {
+	client := http.Client{Transport: failingRoundTripper{errors.New("connect: connection refused")}}
+	tempoClient, err := NewOtelClient(context.TODO())
+	require.NoError(t, err)
+
+	services, err := tempoClient.GetServices(context.Background(), client, getBaseUrl())
+
+	require.Error(t, err)
+	assert.Nil(t, services)
+	assert.Contains(t, err.Error(), "connection refused")
+	assert.NotContains(t, err.Error(), "unexpected end of JSON input")
 }
 
 func getBaseUrl() *url.URL {

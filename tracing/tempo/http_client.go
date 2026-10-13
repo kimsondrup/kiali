@@ -142,7 +142,7 @@ func (oc *OtelHTTPClient) GetServiceStatusHTTP(ctx context.Context, client http.
 	return reqError == nil, reqError
 }
 
-// GetServiceStatusHTTP get service status
+// GetServices reports the services Tempo knows of.
 func (oc *OtelHTTPClient) GetServices(ctx context.Context, client http.Client, baseURL *url.URL) (serviceList []string, err error) {
 	var u url.URL
 	servicesList := []string{}
@@ -150,12 +150,19 @@ func (oc *OtelHTTPClient) GetServices(ctx context.Context, client http.Client, b
 	u = *baseURL
 	u.Path = path.Join(u.Path, "/status/services")
 
-	r, _, reqError := otel.MakeRequest(ctx, client, u.String(), nil)
+	zl := getLoggerFromContextHTTPTempo(ctx)
+	r, code, reqError := otel.MakeRequest(ctx, client, u.String(), nil)
+	// A failed request has no body to read, so unmarshalling it reports an empty JSON input and
+	// the reason the request failed - a refused connection, an expired certificate - is lost.
+	if reqError != nil {
+		zl.Error().Msgf("[HTTP Tempo] API Tempo query error: %s [code: %d, URL: %v]", reqError, code, u)
+		return nil, reqError
+	}
 	if errMarshal := json.Unmarshal(r, &servicesList); errMarshal != nil {
-		getLoggerFromContextHTTPTempo(ctx).Error().Msgf("Error unmarshalling Jaeger response: %s", errMarshal)
+		zl.Error().Msgf("[HTTP Tempo] Error unmarshalling Tempo response: %s", errMarshal)
 		return nil, errMarshal
 	}
-	return servicesList, reqError
+	return servicesList, nil
 }
 
 // queryTracesHTTP
