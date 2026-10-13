@@ -72,11 +72,23 @@ const greyDisplay = kialiStyle({
   padding: '0 0.5em'
 });
 
+const successMessage = kialiStyle({
+  color: PFColors.Success
+});
+
+const dangerMessage = kialiStyle({
+  color: PFColors.Danger
+});
+
 export const CheckConfigComp: React.FC<CheckModalProps> = (props: CheckModalProps) => {
   const { t } = useKialiTranslation();
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const externalUrl = validateExternalUrl(props.externalServices, props.kiosk, props.tracingInfo);
+  // The backend reports a discovery that found nothing with a code of 400 or more. A payload
+  // without a code predates that and only ever carried a success message.
+  const diagnoseFailed = props.tracingDiagnose?.code !== undefined && props.tracingDiagnose.code >= 400;
+  const hasValidConfig = (props.tracingDiagnose?.validConfig?.length ?? 0) > 0;
 
   const labels = {
     namespaceSelector: 'NamespaceSelector',
@@ -120,10 +132,14 @@ export const CheckConfigComp: React.FC<CheckModalProps> = (props: CheckModalProp
       <div style={{ flexGrow: 1, overflowY: 'auto' }}>
         {props.tracingDiagnose && (
           <>
-            <span style={{ color: 'green' }}>{props.tracingDiagnose.message}</span>
-            <div style={{ marginTop: '1em' }}>
-              <span>{t('Possible configuration(s) found for external_services.tracing')}:</span>
-            </div>
+            <span className={diagnoseFailed ? dangerMessage : successMessage} data-test="tracing-diagnose-message">
+              {props.tracingDiagnose.message}
+            </span>
+            {hasValidConfig && (
+              <div style={{ marginTop: '1em' }}>
+                <span>{t('Possible configuration(s) found for external_services.tracing')}:</span>
+              </div>
+            )}
           </>
         )}
         {error && (

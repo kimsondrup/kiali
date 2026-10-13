@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -70,11 +71,36 @@ func DiagnoseTracingConfig(ctx context.Context, conf *config.Config, token strin
 	ports, ll := discoverPortsWithDial(zl, parsedURL.Host, net.DialTimeout)
 	logs = append(logs, ll...)
 
-	validConfig, ll := discoverUrl(ctx, zl, *parsedURL, ports, &auth, cfgTracing)
+	validConfig, ll := discoverUrl(ctx, zl, *parsedURL, url, ports, &auth, cfgTracing)
 	test.ValidConfig = validConfig
 	test.LogLine = append(logs, ll...)
+	// Tempo's discovery is left as it was, which set neither: the outcome and its message are
+	// about Jaeger's api_v3, and a Tempo diagnose payload should not change with it.
+	if isJaeger(cfgTracing) {
+		test.Code, test.Message = diagnoseOutcome(parsedURL.Host, ports, validConfig)
+	}
 
 	return &test, nil
+}
+
+// isJaeger reports whether the configuration is read as Jaeger, which an empty provider is too.
+func isJaeger(cfgTracing config.TracingConfig) bool {
+	return cfgTracing.Provider == "" || cfgTracing.Provider == config.JaegerProvider
+}
+
+// diagnoseOutcome sums up a Jaeger discovery for the Discovery tab, which colours the message by
+// the code. Finding nothing is reported in the payload rather than as an error, so the tab still
+// shows the log of every endpoint probed; the message says why a Jaeger that answers may still
+// not count, since an older Jaeger answers the ports discovery probes but not api_v3.
+func diagnoseOutcome(host string, ports []string, validConfigs []models.ValidConfig) (int, string) {
+	if len(validConfigs) > 0 {
+		return http.StatusOK, fmt.Sprintf("Found [%d] possible tracing configuration(s)", len(validConfigs))
+	}
+	probed := "none of the known tracing ports is open"
+	if len(ports) > 0 {
+		probed = fmt.Sprintf("open ports [%s] were probed", strings.Join(ports, ", "))
+	}
+	return http.StatusNotFound, fmt.Sprintf("No valid tracing configuration found on host [%s]: the configured URL did not answer as Jaeger api_v3, and %s. Jaeger is read through its api_v3 API (/api/v3 over HTTP, jaeger.api_v3.QueryService over gRPC), which requires Jaeger 1.54 or newer. Check the URL and use_grpc, and see the logs for each endpoint probed.", host, probed)
 }
 
 // Parse URL
@@ -116,8 +142,10 @@ func discoverPortsWithDial(zl *zerolog.Logger, host string, dial DialFunc) ([]st
 	return openPorts, logLines
 }
 
-// discoverUrl try to discover valid URLs
-func discoverUrl(ctx context.Context, zl *zerolog.Logger, parsedUrl models.ParsedUrl, ports []string, auth *config.Auth, cfgTracing config.TracingConfig) ([]models.ValidConfig, []models.LogLine) {
+// discoverUrl try to discover valid URLs. configured is the URL the configuration names, which
+// for Jaeger is probed first, as it is configured: the port scan knows only the default ports and
+// base paths, and would report a working Jaeger on any other one as not found.
+func discoverUrl(ctx context.Context, zl *zerolog.Logger, parsedUrl models.ParsedUrl, configured string, ports []string, auth *config.Auth, cfgTracing config.TracingConfig) ([]models.ValidConfig, []models.LogLine) {
 	validConfigs := []models.ValidConfig{}
 	var client http.Client
 	logs := []models.LogLine{}
@@ -132,6 +160,12 @@ func discoverUrl(ctx context.Context, zl *zerolog.Logger, parsedUrl models.Parse
 		return validConfigs, logs
 	} else {
 		client = http.Client{Transport: transport, Timeout: timeout}
+	}
+
+	if isJaeger(cfgTracing) {
+		vc, ll := validateConfiguredJaeger(ctx, client, zl, conf, auth, parsedUrl, configured, cfgTracing.UseGRPC)
+		validConfigs = append(validConfigs, vc...)
+		logs = append(logs, ll...)
 	}
 
 	for _, port := range ports {
@@ -213,7 +247,48 @@ func discoverUrl(ctx context.Context, zl *zerolog.Logger, parsedUrl models.Parse
 			}
 		}
 	}
-	return validConfigs, logs
+	return withoutDuplicates(validConfigs), logs
+}
+
+// validateConfiguredJaeger probes the configured Jaeger endpoint on the configured transport, the
+// way the client reads it: over gRPC at the URL's host and port, over HTTP under the URL's base
+// path.
+func validateConfiguredJaeger(ctx context.Context, client http.Client, zl *zerolog.Logger, conf *config.Config, auth *config.Auth, parsedUrl models.ParsedUrl, configured string, useGRPC bool) ([]models.ValidConfig, []models.LogLine) {
+	u, err := url.Parse(configured)
+	if err != nil {
+		return nil, []models.LogLine{{Time: time.Now(), Test: "Configured Jaeger URL", Result: fmt.Sprintf("cannot parse url: %s", err)}}
+	}
+	if useGRPC {
+		port := u.Port()
+		if port == "" {
+			p, _ := net.LookupPort("tcp", u.Scheme)
+			port = strconv.Itoa(p)
+		}
+		return validateJaegerGRPC(ctx, conf, auth, parsedUrl, port)
+	}
+
+	base := url.URL{Host: u.Host, Path: strings.TrimSuffix(u.Path, "/"), Scheme: u.Scheme}
+	vc, ll, err := validateEndpoint(ctx, client, zl, base.String()+jaegerServicesPath, base.String(), "jaeger")
+	if err != nil {
+		return nil, ll
+	}
+	return []models.ValidConfig{*vc}, ll
+}
+
+// withoutDuplicates drops a configuration found twice, which the configured endpoint is whenever
+// it is also one the port scan probes.
+func withoutDuplicates(validConfigs []models.ValidConfig) []models.ValidConfig {
+	seen := map[string]bool{}
+	kept := []models.ValidConfig{}
+	for _, vc := range validConfigs {
+		key := fmt.Sprintf("%s|%s|%t", vc.Provider, vc.Url, vc.UseGRPC)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		kept = append(kept, vc)
+	}
+	return kept
 }
 
 func validateJaegerGRPC(ctx context.Context, conf *config.Config, auth *config.Auth, parsedUrl models.ParsedUrl, port string) ([]models.ValidConfig, []models.LogLine) {

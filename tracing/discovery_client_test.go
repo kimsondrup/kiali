@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -450,4 +451,110 @@ func TestValidateJaegerGRPC_NotAPIv3(t *testing.T) {
 	assert.Empty(t, validConfigs)
 	assert.True(t, anyLogContains(logs, "jaeger.api_v3.QueryService"))
 	assert.True(t, anyLogContains(logs, "1.54"))
+}
+
+func TestDiagnoseOutcome(t *testing.T) {
+	code, message := diagnoseOutcome("jaeger-host", []string{"16686"}, []models.ValidConfig{{Provider: "jaeger"}})
+	assert.Equal(t, http.StatusOK, code)
+	assert.Contains(t, message, "Found [1]")
+
+	code, message = diagnoseOutcome("jaeger-host", []string{"16686", "16685"}, []models.ValidConfig{})
+	assert.Equal(t, http.StatusNotFound, code)
+	assert.Contains(t, message, "jaeger-host")
+	assert.Contains(t, message, "16686, 16685")
+	assert.Contains(t, message, "api_v3")
+	assert.Contains(t, message, "1.54")
+	assert.Contains(t, message, "use_grpc")
+
+	code, message = diagnoseOutcome("jaeger-host", nil, nil)
+	assert.Equal(t, http.StatusNotFound, code)
+	assert.Contains(t, message, "none of the known tracing ports is open")
+}
+
+// A discovery that finds nothing is still a result for the tab to show, not an error.
+func TestDiagnoseTracingConfigReportsNothingFound(t *testing.T) {
+	conf := config.NewConfig()
+	conf.ExternalServices.Tracing.Enabled = true
+	// A reserved name never resolves, so no port is open.
+	conf.ExternalServices.Tracing.InternalURL = "http://kiali-discovery.invalid:16686"
+
+	diagnose, err := DiagnoseTracingConfig(context.TODO(), conf, "")
+
+	require.NoError(t, err)
+	require.NotNil(t, diagnose)
+	assert.Equal(t, http.StatusNotFound, diagnose.Code)
+	assert.Contains(t, diagnose.Message, "api_v3")
+	assert.Empty(t, diagnose.ValidConfig)
+	assert.NotEmpty(t, diagnose.LogLine)
+}
+
+// The configured Jaeger endpoint is probed as configured, so a working one on a port or base path
+// the scan does not know is found rather than reported as "none of the known tracing ports is
+// open".
+func TestDiagnoseTracingConfigProbesTheConfiguredJaeger(t *testing.T) {
+	MakeRequestFunc = otel.MakeRequest
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/tracing/api/v3/services" {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write([]byte(`{"services":["productpage.bookinfo"]}`))
+	}))
+	t.Cleanup(server.Close)
+	grpcPort := startGRPCServer(t, func(s *grpc.Server) {
+		apiv3.RegisterQueryServiceServer(s, &fakeAPIv3Services{services: []string{"productpage.bookinfo"}})
+	})
+
+	cases := map[string]struct {
+		internalURL string
+		useGRPC     bool
+		want        string
+	}{
+		"HTTP under a base path": {internalURL: server.URL + "/tracing/", useGRPC: false, want: server.URL + "/tracing"},
+		"gRPC":                   {internalURL: "http://127.0.0.1:" + grpcPort + "/jaeger", useGRPC: true, want: "http://127.0.0.1:" + grpcPort},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			conf := config.NewConfig()
+			conf.ExternalServices.Tracing.Enabled = true
+			conf.ExternalServices.Tracing.InternalURL = tc.internalURL
+			conf.ExternalServices.Tracing.UseGRPC = tc.useGRPC
+			config.Set(conf)
+
+			diagnose, err := DiagnoseTracingConfig(context.TODO(), conf, "")
+			require.NoError(t, err)
+
+			assert.Equal(t, http.StatusOK, diagnose.Code, diagnose.Message)
+			require.NotEmpty(t, diagnose.ValidConfig)
+			assert.Equal(t, tc.want, diagnose.ValidConfig[0].Url)
+			assert.Equal(t, tc.useGRPC, diagnose.ValidConfig[0].UseGRPC)
+			assert.Equal(t, "jaeger", diagnose.ValidConfig[0].Provider)
+		})
+	}
+}
+
+// Tempo's diagnose payload carries no code and no message, as before the Jaeger outcome was added:
+// that outcome and its api_v3 wording are about Jaeger.
+func TestDiagnoseTracingConfigOfTempoSetsNoOutcome(t *testing.T) {
+	conf := config.NewConfig()
+	conf.ExternalServices.Tracing.Enabled = true
+	conf.ExternalServices.Tracing.InternalURL = "http://kiali-discovery.invalid:3200"
+	conf.ExternalServices.Tracing.Provider = config.TempoProvider
+
+	diagnose, err := DiagnoseTracingConfig(context.TODO(), conf, "")
+
+	require.NoError(t, err)
+	assert.Zero(t, diagnose.Code)
+	assert.Empty(t, diagnose.Message)
+}
+
+func TestWithoutDuplicates(t *testing.T) {
+	kept := withoutDuplicates([]models.ValidConfig{
+		{Provider: "jaeger", Url: "http://h:16686/jaeger"},
+		{Provider: "jaeger", Url: "http://h:16686"},
+		{Provider: "jaeger", Url: "http://h:16686/jaeger"},
+		{Provider: "jaeger", Url: "http://h:16685", UseGRPC: true},
+		{Provider: "jaeger", Url: "http://h:16685", UseGRPC: false},
+	})
+	assert.Len(t, kept, 4)
 }
