@@ -214,7 +214,10 @@ func portForwardToTracing(ctx context.Context, localClient kubernetes.ClientInte
 		return err
 	}
 	conf.ExternalServices.Tracing.InternalURL = fmt.Sprintf("http://127.0.0.1:%d", localPort)
-	// Apparently this setting doesn't work since the version check strips out the port.
+	// The forwarded port (--tracing-port, 16686 by default, or Tempo's 3200) is the query service's
+	// HTTP port, so the client reads it over HTTP: the api_v3 HTTP gateway for Jaeger, the HTTP API
+	// for Tempo. HTTP also keeps the version check on the forwarded port, since it strips the port
+	// only for use_grpc.
 	conf.ExternalServices.Tracing.UseGRPC = false
 	config.Set(conf)
 

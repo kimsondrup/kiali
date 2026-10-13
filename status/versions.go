@@ -114,6 +114,11 @@ func tracingVersion(conf *config.Config, homeClusterSAClient kubernetes.ClientIn
 
 			// there is no known way to get the version from GRPC. So we'll try to change the URL to go over HTTP,
 			// but this is not guaranteed to work. But it is worth a try.
+			//
+			// The port strip stays although the client now reads api_v3: the shipped default is still the
+			// gRPC port 16685 with use_grpc true, and api_v3 gRPC is served there, so skipping the scrape on
+			// a gRPC port would drop the version for every default install. Skipping it belongs with the
+			// change of the shipped default URL and transport, which is tracked separately.
 			if tracingConfig.UseGRPC {
 				parsedUrl, err := url.Parse(versionUrl)
 				if err == nil {
@@ -126,6 +131,9 @@ func tracingVersion(conf *config.Config, homeClusterSAClient kubernetes.ClientIn
 				}
 			}
 
+			// Unlike the Tempo probe below and the tracing client, this request does not send
+			// custom_headers. That predates api_v3 and is kept as is: a proxy that requires them fails
+			// only this scrape, which is logged and leaves the version empty.
 			body, statusCode, _, err := httputil.HttpGet(versionUrl, &auth, 10*time.Second, nil, nil, conf)
 			if err != nil || statusCode > 399 {
 				log.Infof("jaeger version check failed: url=[%v], code=[%v], err=[%v]", versionUrl, statusCode, err)

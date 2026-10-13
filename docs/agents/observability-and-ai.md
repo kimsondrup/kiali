@@ -56,7 +56,7 @@ Kiali integrates with four categories of external observability tools:
 
 The `config.ExternalServices.Tracing.Provider` field controls which backend is active. Two values are recognized:
 
-- `"jaeger"` (default) — Jaeger-compatible endpoints (Jaeger itself or any compatible API).
+- `"jaeger"` (default) — Jaeger's api_v3 query API, on either transport. The documented minimum is Jaeger 1.54; there is no client for the older unversioned HTTP API (`/api/traces`, `/api/services`) or for the api_v2 gRPC service, and no fallback to them.
 - `"tempo"` (`config.TempoProvider`) — Grafana Tempo via its HTTP search and gRPC stream APIs.
 
 Both backends are accessed through the unified `tracing.ClientInterface`. The backend-specific transport is selected at client construction time in `tracing/client.go:newClient`.
@@ -68,8 +68,8 @@ Configuration fields relevant to tracing:
 | `ExternalServices.Tracing.Enabled` | Feature flag |
 | `ExternalServices.Tracing.InternalURL` | In-cluster URL (preferred); used for actual API calls |
 | `ExternalServices.Tracing.ExternalURL` | Public URL (shown to users in the UI for direct links) |
-| `ExternalServices.Tracing.UseGRPC` | Use gRPC instead of HTTP for Jaeger; for Tempo uses gRPC stream for search only |
-| `ExternalServices.Tracing.GrpcPort` | Tempo gRPC port (separate from HTTP port) |
+| `ExternalServices.Tracing.UseGRPC` | Jaeger: `false` reads the api_v3 HTTP gateway at `<URL path>/api/v3/...`; `true` calls the gRPC service `jaeger.api_v3.QueryService` at the URL's host:port (the path is ignored; the shipped default is port 16685, `use_grpc: true`). Tempo: gRPC stream for search only |
+| `ExternalServices.Tracing.GrpcPort` | Tempo gRPC port (separate from HTTP port); Jaeger ignores it |
 | `ExternalServices.Tracing.Provider` | `"jaeger"` or `"tempo"` |
 | `ExternalServices.Tracing.Auth` | Auth config (type, token, UseKialiToken) |
 | `ExternalServices.Tracing.CustomHeaders` | Extra HTTP/gRPC metadata headers |
@@ -108,7 +108,12 @@ type GRPCClientInterface interface {
 }
 ```
 
-The concrete `Client` struct holds both an `httpTracingClient HTTPClientInterface` and a `grpcClient GRPCClientInterface`. Each `Get*` method dispatches to the gRPC client when `grpcClient != nil`, falling back to HTTP otherwise. Exception: Tempo always uses HTTP for `GetTraceDetail`, regardless of gRPC being configured.
+The concrete `Client` struct holds an `httpTracingClient HTTPClientInterface`, a `grpcClient GRPCClientInterface`, and the `provider` and `transport` it was built for. `newClient` records both explicitly (an empty provider is read as `jaeger`; any other unknown provider is an error), and each `Get*` method dispatches on `transport`, not on which clients happen to be set and not on `config.Get()`:
+
+- Jaeger: every call goes over the configured transport.
+- Tempo with `use_grpc`: search, services and the health probe go over gRPC, but `GetTraceDetail` goes over HTTP, because Tempo's gRPC streaming API only searches. A Tempo gRPC client therefore always carries an HTTP client too.
+
+There is no fallback between transports or APIs: a failure is reported, not retried another way.
 
 `NewClient(ctx, conf, token, retry bool)` constructs the client. If `retry = true` (production path), it calls `wait.PollUntilContextCancel` with a 30-second retry interval — the tracing backend is considered non-essential, and startup should not block waiting for it. In `cmd/server.go`, the tracing client is initialized in a goroutine and exposed via a loader closure:
 
@@ -125,20 +130,28 @@ Handlers receive `traceClientLoader func() tracing.ClientInterface` and call it 
 
 Custom headers are propagated to downstream tracing API calls via gRPC metadata (`metadata.NewOutgoingContext`) using `prepareContextForClient`.
 
-`tracing/discovery_client.go` provides `DiagnoseTracingConfig` — used by the `/api/tracing/diagnose` endpoint — which validates the configuration, probes connectivity, and returns a structured `TracingDiagnose` with a log of test steps.
+`tracing/discovery_client.go` provides `DiagnoseTracingConfig` — used by the `/api/tracing/diagnose` endpoint — which validates the configuration, probes connectivity, and returns a structured `TracingDiagnose` with a log of test steps. Its Jaeger probes ask api_v3 (`/api/v3/services` over HTTP, `GetServices` over gRPC), also against Tempo hosts, so it never suggests an endpoint the client cannot read. It sets `Code` 200 and a `Message` when it finds a valid configuration, and otherwise `Code` 404 with a message naming api_v3, Jaeger 1.54+ and the probed endpoints; the Discovery tab colours the message by that code.
 
 ## Jaeger Integration
 
+`provider: jaeger` reads Jaeger's api_v3 on both transports. Both transports build their requests from one place and convert their answers through the same OTLP pipeline that Tempo uses, so a trace looks the same whichever transport fetched it.
+
 `tracing/jaeger/` contains:
 
-- `http_client.go` — `JaegerHTTPClient` implementing `HTTPClientInterface`. Queries `/api/traces` and `/api/traces/{traceID}` using the Jaeger v1 HTTP API.
-- `grpc_client.go` — `JaegerGRPCClient` implementing `GRPCClientInterface`. Uses the Jaeger `query.proto` gRPC service (`FindTraces`, `GetTrace`).
-- `model/` — protobuf-generated types plus JSON model types for Jaeger's HTTP response format.
+- `apiv3_http.go` — `HTTPClient` implementing `HTTPClientInterface`. Reads the api_v3 HTTP gateway: `GET <base path>/api/v3/traces` (search), `/api/v3/traces/{traceID}` (detail) and `/api/v3/services`. The URL's path is the query service's base path and is joined in front of `/api/v3`. Answers are decoded with `otlp.Decode` (hex IDs, `result` root key). `DecodeServices` reads the services answer and is shared with discovery.
+- `apiv3_grpc.go` — `GRPCClient` implementing `GRPCClientInterface`. Calls `jaeger.api_v3.QueryService` (`FindTraces`, `GetTrace`, `GetServices`) at the URL's host:port, which Jaeger serves on the same port as the api_v2 service it replaced (16685). The server-streamed answers are read with `otlp.ReadStream`, which accumulates every message and treats only `io.EOF` as a clean end. Every call is bounded by `query_timeout` when it is positive, as well as by the caller's context.
+- `apiv3req.go` — the request builder both transports share. It refuses an empty service name, a zero window and an inverted window before sending anything, keeps the window at nanosecond precision, and always sends a positive search depth: a limit of 0 or less (as `GetErrorTraces` sends) becomes 100, Jaeger's own default, and anything above `models.MaxTracingLimit` (10000) is clamped. HTTP parameters are snake_case (`query.service_name`, `query.start_time_min`, `query.num_traces`, `query.attributes`, ...), because Jaeger 2.17 refuses or ignores the camelCase spellings.
+- `result.go` and `errors.go` — turn answers into `models.TracingResponse` / `models.TracingSingleTrace` with one meaning for "nothing": an unknown trace ID is `(nil, nil)` on both transports (the handler answers 404), and an unmatched search is an empty list. Errors that mean "this is not api_v3" (a plain-text 404, a non-JSON or `services`-less body, gRPC `Unimplemented`) name api_v3 and the 1.54 minimum; HTTP sent to a gRPC port, or gRPC to an HTTP port, is reported as a wrong port or transport.
+- `filter.go` — `keepTracesWithTags`, Kiali's own tag filter for an HTTP gateway that ignores `query.attributes` (Jaeger 2.17 and older). A tagged HTTP search is one request at the requested depth that still sends `query.attributes`, so Jaeger 2.20 and later filter on the server; the converted answer is then filtered again, which keeps what such a server kept (keys with a `resource.`, `scope.` or `span.` prefix are left to the server, since the converted trace does not carry them under that name). On a gateway that ignores the attributes the depth applies before the filter, so a tag search, such as the errors-only count, can return fewer matches than the window holds; gRPC, where every version filters and this is never called, and HTTP on Jaeger 2.20 and later do not have this limit.
+- The gRPC dial options come from `jaeger.DialOptions()`, which raises the receive limit to 64 MiB: api_v3 sends a whole trace in one message, and gRPC's default 4 MiB refuses a trace of about 10000 spans.
+- `apiv3/` — the trimmed api_v3 IDL and its generated stubs (`hack/gen-apiv3-protos.sh` regenerates them and checks the fields against upstream jaeger-idl).
 - `logging.go` — logger helpers.
 
-`NewGRPCJaegerClient` wraps a `model.QueryServiceClient` (generated from Jaeger's `query.proto`).
+The shared pieces live outside the package: `tracing/otel/otlp` decodes OTLP JSON and reads gRPC streams, and `tracing/otel/model/converter` (`TracesFromOTLP`, `TraceFromOTLP`) converts OTLP into Kiali's provider-neutral trace model in `models/tracing/json`. HTTP requests go through `otel.MakeRequest`, which handles context propagation.
 
-The Jaeger HTTP client uses the shared OTel HTTP helper `otel.MakeRequest` for HTTP calls, which handles context propagation.
+The health probe (`GetServiceStatus`, also used by `/api/tracing/check`) is api_v3 `GetServices`, so a backend that does not serve api_v3 fails it with a clear error instead of looking empty.
+
+The Jaeger version shown in the UI is scraped from the `JAEGER_VERSION` constant in the query service's UI page (`status/versions.go`); the scrape is independent of api_v3 and of the client. With `use_grpc` the scrape strips the port from the URL and tries the default HTTP(S) port, because the shipped default URL is the gRPC port 16685.
 
 ## Tempo Integration
 
@@ -153,7 +166,7 @@ For Tempo, `newClient` selects:
 - HTTP only: `UseGRPC=false` — creates `OtelHTTPClient`.
 - gRPC + HTTP: `UseGRPC=true` — creates both an `OtelHTTPClient` (for `GetTraceDetail`) and a gRPC stream client (for `FindTraces`).
 
-The Tempo HTTP client re-uses Jaeger's JSON trace model via converter functions in `tracing/otel/model/converter/`.
+The Tempo HTTP client decodes with `otlp.Decode` (base64 IDs, `batches` root key) and converts through the same `tracing/otel/model/converter/` functions as Jaeger, into the provider-neutral model in `models/tracing/json`. Tempo's gRPC stream keeps its own reader rather than `otlp.ReadStream`.
 
 ## Grafana Integration
 

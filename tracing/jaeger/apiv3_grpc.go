@@ -74,7 +74,7 @@ func (c *GRPCClient) FindTraces(ctx context.Context, serviceName string, q model
 	// FindTraces sends one trace per message (measured: 345 traces in 345 messages), but nothing
 	// in the protocol keeps a trace's spans in one message, so every message is accumulated and
 	// the converter groups the spans by trace ID. ReadStream also refuses to call a stream cut
-	// short by the deadline complete, which the api_v2 reader did.
+	// short by the deadline complete, so a timeout is an error rather than a partial answer.
 	traces, err := otlp.ReadStream(ctx, stream)
 	return searchResponse(serviceName, traces, grpcError(err, errEmptyResult))
 }
