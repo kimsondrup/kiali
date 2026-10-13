@@ -169,7 +169,9 @@ func TestProcessStreamReportsAnUpdatedTraceOnce(t *testing.T) {
 		searchResponse(second, other),
 	}})
 
-	traces, err := processStream(context.Background(), stream, "reviews.default")
+	// A bound of two is the two traces the stream describes, over the three records it carries:
+	// counting the records would drop the second trace.
+	traces, err := processStream(context.Background(), stream, "reviews.default", 2)
 	require.NoError(t, err)
 	require.Len(t, traces, 2)
 
@@ -191,7 +193,7 @@ func TestProcessStreamAccumulatesDisjointMessages(t *testing.T) {
 		searchResponse(searchTrace("3f7a90b4c5d6e7f801928374655aa0bb", "bb22cc33dd44ee55")),
 	}})
 
-	traces, err := processStream(context.Background(), stream, "reviews.default")
+	traces, err := processStream(context.Background(), stream, "reviews.default", 0)
 	require.NoError(t, err)
 	require.Len(t, traces, 3)
 	assert.Equal(t, "02e299711ce47710289dc6640727404f", string(traces[0].TraceID))
@@ -208,7 +210,7 @@ func TestProcessStreamCountsAnUnpaddedTraceOnce(t *testing.T) {
 		searchResponse(searchTrace("02e299711ce47710289dc6640727404f", "49cd77d1f9dcd936", "2e6ca056f5fc6fdc")),
 	}})
 
-	traces, err := processStream(context.Background(), stream, "reviews.default")
+	traces, err := processStream(context.Background(), stream, "reviews.default", 0)
 	require.NoError(t, err)
 	require.Len(t, traces, 1)
 	assert.Equal(t, "02e299711ce47710289dc6640727404f", string(traces[0].TraceID))
@@ -220,7 +222,7 @@ func TestProcessStreamCountsAnUnpaddedTraceOnce(t *testing.T) {
 func TestProcessStreamEndsOnEOF(t *testing.T) {
 	stream := searchStream(t, &scriptedQuerier{})
 
-	traces, err := processStream(context.Background(), stream, "reviews.default")
+	traces, err := processStream(context.Background(), stream, "reviews.default", 0)
 	require.NoError(t, err)
 	// Not nil even when empty: a nil slice serialises as JSON null.
 	assert.NotNil(t, traces)
@@ -236,7 +238,7 @@ func TestProcessStreamReportsAStreamError(t *testing.T) {
 		failWith: status.Error(codes.Internal, "block scheduler unavailable"),
 	})
 
-	traces, err := processStream(context.Background(), stream, "reviews.default")
+	traces, err := processStream(context.Background(), stream, "reviews.default", 0)
 	require.Error(t, err)
 	assert.Nil(t, traces)
 	assert.Contains(t, err.Error(), "block scheduler unavailable")
@@ -263,4 +265,62 @@ func TestProcessServicesNamesARepeatedTraceOnce(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"reviews.bookinfo:9080/*", "ratings.bookinfo:9080/*"}, services)
+}
+
+// TestProcessStreamClampsToTheRequestedLimit covers a backend that sends more traces than the
+// search asked for, which Tempo 2.3.0 does: a limit of 20 is answered with 32 traces, where
+// 2.2.0 and 3.1.0 answer 20. What the caller asked for bounds what it is told.
+func TestProcessStreamClampsToTheRequestedLimit(t *testing.T) {
+	traceIDs := []string{
+		"02e299711ce47710289dc6640727404f",
+		"1c6e4bf1d1c0ac3d91f9b2e5a0d7c418",
+		"3f7a90b4c5d6e7f801928374655aa0bb",
+		"4a1b2c3d4e5f60718293a4b5c6d7e8f9",
+		"5b2c3d4e5f6071829304a5b6c7d8e9fa",
+	}
+	overDelivered := make([]*querypb.TraceSearchMetadata, 0, len(traceIDs))
+	for _, traceID := range traceIDs {
+		overDelivered = append(overDelivered, searchTrace(traceID, "49cd77d1f9dcd936"))
+	}
+
+	stream := searchStream(t, &scriptedQuerier{messages: []*querypb.SearchResponse{searchResponse(overDelivered...)}})
+
+	traces, err := processStream(context.Background(), stream, "reviews.default", 2)
+	require.NoError(t, err)
+	require.Len(t, traces, 2)
+	assert.Equal(t, traceIDs[0], string(traces[0].TraceID))
+	assert.Equal(t, traceIDs[1], string(traces[1].TraceID))
+}
+
+// TestProcessStreamClampsAcrossMessages covers the same bound over a stream that exceeds it only
+// in total, no one message being over the limit, with a trace repeated the way an updated one is.
+func TestProcessStreamClampsAcrossMessages(t *testing.T) {
+	stream := searchStream(t, &scriptedQuerier{messages: []*querypb.SearchResponse{
+		searchResponse(searchTrace("02e299711ce47710289dc6640727404f", "49cd77d1f9dcd936")),
+		searchResponse(
+			searchTrace("02e299711ce47710289dc6640727404f", "49cd77d1f9dcd936"),
+			searchTrace("1c6e4bf1d1c0ac3d91f9b2e5a0d7c418", "aa11bb22cc33dd44"),
+			searchTrace("3f7a90b4c5d6e7f801928374655aa0bb", "bb22cc33dd44ee55"),
+		),
+	}})
+
+	traces, err := processStream(context.Background(), stream, "reviews.default", 2)
+	require.NoError(t, err)
+	require.Len(t, traces, 2)
+	assert.Equal(t, "02e299711ce47710289dc6640727404f", string(traces[0].TraceID))
+	assert.Equal(t, "1c6e4bf1d1c0ac3d91f9b2e5a0d7c418", string(traces[1].TraceID))
+}
+
+// TestProcessStreamReportsEveryTraceWithoutALimit covers a search that asked for no bound, which
+// is what a limit of zero is on the HTTP path too.
+func TestProcessStreamReportsEveryTraceWithoutALimit(t *testing.T) {
+	stream := searchStream(t, &scriptedQuerier{messages: []*querypb.SearchResponse{searchResponse(
+		searchTrace("02e299711ce47710289dc6640727404f", "49cd77d1f9dcd936"),
+		searchTrace("1c6e4bf1d1c0ac3d91f9b2e5a0d7c418", "aa11bb22cc33dd44"),
+		searchTrace("3f7a90b4c5d6e7f801928374655aa0bb", "bb22cc33dd44ee55"),
+	)}})
+
+	traces, err := processStream(context.Background(), stream, "reviews.default", 0)
+	require.NoError(t, err)
+	assert.Len(t, traces, 3)
 }

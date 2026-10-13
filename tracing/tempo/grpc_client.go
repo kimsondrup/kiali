@@ -79,7 +79,7 @@ func (jc TempoGRPCClient) FindTraces(ctx context.Context, serviceName string, q 
 		return nil, err
 	}
 
-	traces, err := processStream(ctx, stream, serviceName)
+	traces, err := processStream(ctx, stream, serviceName, q.Limit)
 
 	if err != nil {
 		return nil, err
@@ -149,7 +149,11 @@ func (jc TempoGRPCClient) GetServicesList(ctx context.Context) ([]string, error)
 // A read that times out reports what arrived rather than failing. Because the messages are diffs,
 // that drops whatever the later ones carried, so it is a known defect left for the change that
 // fixes it.
-func processStream(ctx context.Context, stream querypb.StreamingQuerier_SearchClient, serviceName string) ([]jsonModel.Trace, error) {
+//
+// limit is the caller's bound on how many traces it asked for, which the backend is not relied on
+// to honour: Tempo 2.3.0 answers a limit of 20 with 32 traces, where 2.2.0 and 3.1.0 answer 20.
+// The HTTP path bounds its answer the same way, in transformTrace.
+func processStream(ctx context.Context, stream querypb.StreamingQuerier_SearchClient, serviceName string, limit int) ([]jsonModel.Trace, error) {
 	zl := getLoggerFromContextGRPCTempo(ctx)
 
 	order := []jsonModel.TraceID{}
@@ -171,6 +175,13 @@ func processStream(ctx context.Context, stream querypb.StreamingQuerier_SearchCl
 			}
 			latest[batchTrace.TraceID] = *batchTrace
 		}
+	}
+
+	// The bound counts distinct traces, not records: applying it only once the stream is read out
+	// keeps a trace Tempo updated in a later message from taking a second slot, and keeps that
+	// update.
+	if limit > 0 && len(order) > limit {
+		order = order[:limit]
 	}
 
 	traces := make([]jsonModel.Trace, 0, len(order))
