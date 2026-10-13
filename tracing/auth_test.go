@@ -223,13 +223,14 @@ func TestTracingUseKialiToken(t *testing.T) {
 // reflected in subsequent requests.
 func TestTracingClientHTTPBearerAuth(t *testing.T) {
 	// Create test server that captures Authorization header
-	var capturedAuth atomic.Value
+	var capturedAuth, capturedPath atomic.Value
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		capturedAuth.Store(r.Header.Get("Authorization"))
-		// Return minimal valid Jaeger response for /api/services
+		capturedPath.Store(r.URL.Path)
+		// Return a minimal Jaeger api_v3 answer for /api/v3/services
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"data": []}`))
+		_, _ = w.Write([]byte(`{"services":[]}`))
 	}))
 	defer server.Close()
 
@@ -267,6 +268,7 @@ func TestTracingClientHTTPBearerAuth(t *testing.T) {
 	require.NotNil(t, auth, "Authorization header should be captured")
 	assert.Equal(t, "Bearer "+initialToken, auth.(string),
 		"Bearer token should be sent in Authorization header")
+	assert.Equal(t, "/api/v3/services", capturedPath.Load(), "The health probe should ask api_v3 for its services")
 
 	// Rotate token on disk
 	rotatedToken := "rotated-bearer-token-67890"
@@ -293,10 +295,10 @@ func TestTracingClientHTTPBasicAuth(t *testing.T) {
 	var capturedAuth atomic.Value
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		capturedAuth.Store(r.Header.Get("Authorization"))
-		// Return minimal valid Jaeger response for /api/services
+		// Return a minimal Jaeger api_v3 answer for /api/v3/services
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"data": []}`))
+		_, _ = w.Write([]byte(`{"services":[]}`))
 	}))
 	defer server.Close()
 
@@ -371,10 +373,10 @@ func TestTracingClientUseKialiTokenIntegration(t *testing.T) {
 	var capturedAuth atomic.Value
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		capturedAuth.Store(r.Header.Get("Authorization"))
-		// Return minimal valid Jaeger response for /api/services
+		// Return a minimal Jaeger api_v3 answer for /api/v3/services
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"data": []}`))
+		_, _ = w.Write([]byte(`{"services":[]}`))
 	}))
 	defer server.Close()
 
@@ -417,7 +419,7 @@ func TestTracingClientUseKialiTokenFileRotation(t *testing.T) {
 		capturedAuth.Store(r.Header.Get("Authorization"))
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"data": []}`))
+		_, _ = w.Write([]byte(`{"services":[]}`))
 	}))
 	defer server.Close()
 
@@ -493,7 +495,7 @@ func TestTracingClientHTTPSWithCARotation(t *testing.T) {
 		requestCount.Add(1)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"data": []}`))
+		_, _ = w.Write([]byte(`{"services":[]}`))
 	})
 
 	// Start HTTPS server with initial cert

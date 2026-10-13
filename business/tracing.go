@@ -466,6 +466,9 @@ func (in *TracingService) ValidateConfiguration(ctx context.Context, conf *confi
 		validation.Error = msg
 		return &validation
 	}
+	// The client serves this one check, so its gRPC connection, and the goroutines that keep it,
+	// would otherwise outlive the request.
+	defer client.Close()
 
 	// Validate endpoint
 	status, err := client.GetServiceStatus(ctx)

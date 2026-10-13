@@ -2,16 +2,23 @@ package tracing
 
 import (
 	"context"
+	"net"
 	"net/http"
 	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/kiali/kiali/config"
 	"github.com/kiali/kiali/models"
 	"github.com/kiali/kiali/tracing/jaeger"
+	"github.com/kiali/kiali/tracing/jaeger/apiv3"
 )
 
 const token = "1234567890"
@@ -260,4 +267,141 @@ func TestClientDispatchesOnTransport(t *testing.T) {
 			assert.Equal(t, tc.expectedHTTP, httpClient.calls)
 		})
 	}
+}
+
+func TestNewClientReadsJaegerAPIv3(t *testing.T) {
+	cases := map[string]struct {
+		provider config.TracingProvider
+		useGRPC  bool
+	}{
+		"jaeger over HTTP": {provider: config.JaegerProvider, useGRPC: false},
+		"jaeger over gRPC": {provider: config.JaegerProvider, useGRPC: true},
+		// A configuration posted to /api/tracing/check can leave the provider out.
+		"empty provider over HTTP": {provider: "", useGRPC: false},
+		"empty provider over gRPC": {provider: "", useGRPC: true},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			conf := config.NewConfig()
+			conf.ExternalServices.Tracing.Enabled = true
+			conf.ExternalServices.Tracing.Provider = tc.provider
+			conf.ExternalServices.Tracing.UseGRPC = tc.useGRPC
+
+			client, err := NewClient(context.Background(), conf, token, false)
+			require.NoError(t, err)
+			require.NotNil(t, client)
+
+			assert.Equal(t, config.JaegerProvider, client.provider)
+			if tc.useGRPC {
+				assert.Equal(t, transportGRPC, client.transport)
+				assert.IsType(t, &jaeger.GRPCClient{}, client.grpcClient)
+				assert.Nil(t, client.httpTracingClient)
+			} else {
+				assert.Equal(t, transportHTTP, client.transport)
+				assert.IsType(t, &jaeger.HTTPClient{}, client.httpTracingClient)
+				assert.Nil(t, client.grpcClient)
+			}
+		})
+	}
+}
+
+func TestNewClientRefusesUnknownProvider(t *testing.T) {
+	conf := config.NewConfig()
+	conf.ExternalServices.Tracing.Enabled = true
+	conf.ExternalServices.Tracing.Provider = "zipkin"
+	conf.ExternalServices.Tracing.UseGRPC = false
+
+	client, err := NewClient(context.Background(), conf, token, false)
+	require.Error(t, err)
+	assert.Nil(t, client)
+	assert.Contains(t, err.Error(), "zipkin")
+}
+
+// The status probe of /api/tracing/check reports a dial error in the backend's own words, which
+// business.TestValidateConfiguration relies on.
+func TestJaegerHTTPStatusKeepsDialError(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	address := listener.Addr().String()
+	require.NoError(t, listener.Close())
+
+	conf := config.NewConfig()
+	conf.ExternalServices.Tracing.Enabled = true
+	conf.ExternalServices.Tracing.InternalURL = "http://" + address
+	conf.ExternalServices.Tracing.UseGRPC = false
+
+	client, err := NewClient(context.Background(), conf, token, false)
+	require.NoError(t, err)
+
+	ok, err := client.GetServiceStatus(context.Background())
+	assert.False(t, ok)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "connection refused")
+}
+
+// bigTraceServer answers GetTrace with one trace of n spans in a single message, the way api_v3
+// sends a trace.
+type bigTraceServer struct {
+	apiv3.UnimplementedQueryServiceServer
+
+	spans int
+}
+
+func (s *bigTraceServer) GetTrace(_ *apiv3.GetTraceRequest, stream grpc.ServerStreamingServer[tracepb.TracesData]) error {
+	traceID := make([]byte, 16)
+	traceID[15] = 1
+	spans := make([]*tracepb.Span, 0, s.spans)
+	for i := range s.spans {
+		spanID := make([]byte, 8)
+		spanID[6], spanID[7] = byte(i>>8), byte(i)
+		spans = append(spans, &tracepb.Span{
+			EndTimeUnixNano:   2_000,
+			Name:              strings.Repeat("a long operation name ", 20),
+			SpanId:            spanID,
+			StartTimeUnixNano: 1_000,
+			TraceId:           traceID,
+		})
+	}
+	return stream.Send(&tracepb.TracesData{ResourceSpans: []*tracepb.ResourceSpans{{ScopeSpans: []*tracepb.ScopeSpans{{Spans: spans}}}}})
+}
+
+// The connection the Jaeger gRPC client dials reads a trace above gRPC's default 4 MiB receive
+// limit, and Close releases it.
+func TestJaegerGRPCClientReadsATraceAboveFourMiB(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	server := grpc.NewServer()
+	apiv3.RegisterQueryServiceServer(server, &bigTraceServer{spans: 10000})
+	go func() { _ = server.Serve(listener) }()
+	t.Cleanup(server.Stop)
+
+	conf := config.NewConfig()
+	conf.ExternalServices.Tracing.Enabled = true
+	conf.ExternalServices.Tracing.InternalURL = "http://" + listener.Addr().String()
+	conf.ExternalServices.Tracing.UseGRPC = true
+	config.Set(conf)
+
+	client, err := NewClient(context.Background(), conf, token, false)
+	require.NoError(t, err)
+
+	trace, err := client.GetTraceDetail(context.Background(), "00000000000000000000000000000001")
+	require.NoError(t, err)
+	require.NotNil(t, trace)
+	assert.Len(t, trace.Data.Spans, 10000)
+
+	require.NoError(t, client.Close())
+	_, err = client.GetTraceDetail(context.Background(), "00000000000000000000000000000001")
+	assert.Equal(t, codes.Canceled, status.Code(err), "a closed connection answers no call")
+}
+
+// A client that dialled nothing has nothing to close.
+func TestCloseOfAnHTTPClient(t *testing.T) {
+	conf := config.NewConfig()
+	conf.ExternalServices.Tracing.Enabled = true
+	conf.ExternalServices.Tracing.UseGRPC = false
+
+	client, err := NewClient(context.Background(), conf, token, false)
+	require.NoError(t, err)
+	assert.NoError(t, client.Close())
+	assert.NoError(t, (*Client)(nil).Close())
 }

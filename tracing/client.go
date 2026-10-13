@@ -19,7 +19,7 @@ import (
 	"github.com/kiali/kiali/models"
 	"github.com/kiali/kiali/prometheus/internalmetrics"
 	"github.com/kiali/kiali/tracing/jaeger"
-	"github.com/kiali/kiali/tracing/jaeger/model"
+	"github.com/kiali/kiali/tracing/jaeger/apiv3"
 	"github.com/kiali/kiali/tracing/tempo"
 	"github.com/kiali/kiali/util/grpcutil"
 	"github.com/kiali/kiali/util/httputil"
@@ -68,6 +68,7 @@ const (
 type Client struct {
 	ClientInterface
 	baseURL           *url.URL
+	conn              *grpc.ClientConn
 	customHeaders     map[string]string
 	grpcClient        GRPCClientInterface
 	httpClient        http.Client
@@ -106,13 +107,26 @@ func NewClient(ctx context.Context, conf *config.Config, token string, retry boo
 		return nil, err
 	}
 
-	return client, nil
+	// Without retry the poll ends on the first attempt whatever its outcome, so its error is
+	// the caller's: /api/tracing/check reports it instead of a bare "Error creating tracing client".
+	return client, err
 }
 
 func newClient(ctx context.Context, conf *config.Config, token string) (*Client, error) {
 	cfgTracing := conf.ExternalServices.Tracing
 	if !cfgTracing.Enabled {
 		return nil, errors.New("tracing is not enabled")
+	}
+
+	// Config load rejects an unknown provider, but a configuration posted to
+	// /api/tracing/check, and many tests, can carry an empty one. Reading that as Jaeger is
+	// a decision, so it is made here rather than left to whichever branch is the else.
+	provider := cfgTracing.Provider
+	if provider == "" {
+		provider = config.JaegerProvider
+	}
+	if provider != config.JaegerProvider && provider != config.TempoProvider {
+		return nil, fmt.Errorf("unknown tracing provider [%s]: it must be [%s] or [%s]", provider, config.JaegerProvider, config.TempoProvider)
 	}
 
 	zl := log.FromContext(ctx)
@@ -155,41 +169,35 @@ func newClient(ctx context.Context, conf *config.Config, token string) (*Client,
 	address := host + ":" + port
 	zl.Trace().Msgf("[%s] client info: address=[%s], auth.type=[%s]", cfgTracing.Provider, address, auth.Type)
 
-	if cfgTracing.UseGRPC && cfgTracing.Provider != config.TempoProvider {
+	if cfgTracing.UseGRPC && provider == config.JaegerProvider {
 		opts, err := grpcutil.GetAuthDialOptions(conf, host, u.Scheme == "https", &auth)
 		if err != nil {
 			zl.Error().Msgf("Error while building GRPC dial options: %v", err)
 			return nil, err
 		}
 
-		var client GRPCClientInterface
 		// Note: jaeger-query does not have built-in secured communication, at the moment it is only achieved through reverse proxies (cf https://github.com/jaegertracing/jaeger/issues/1718).
 		// When using the GRPC client, if a proxy is used it has to support GRPC.
 		// Basic and Token auth are in theory implemented for the GRPC client (see package grpcutil) but were not tested because openshift's oauth-proxy doesn't support GRPC at the time.
-		// Leaving some commented-out code below -- perhaps useful, perhaps not -- to consider when testing secured GRPC.
-		// if auth.Token != "" {
-		// 	requestMetadata := metadata.New(map[string]string{
-		// 		spanstore.BearerTokenKey: auth.Token,
-		// 	})
-		// 	ctx = metadata.NewOutgoingContext(ctx, requestMetadata)
-		// }
-		conn, err := grpc.NewClient(address, opts...)
-		if err == nil {
-			cc := model.NewQueryServiceClient(conn)
-			client, err = jaeger.NewGRPCJaegerClient(cc)
-			if err != nil {
-				return nil, err
-			}
-			zl.Info().Msgf("Create [%s] GRPC client. address=[%s]", cfgTracing.Provider, address)
-			return &Client{customHeaders: cfgTracing.CustomHeaders, grpcClient: client, httpTracingClient: httpTracingClient, provider: config.JaegerProvider, transport: transportGRPC}, nil
-		} else {
+		//
+		// api_v3 is dialled at the URL's host and port, which serve it next to api_v2 (16685 by
+		// default). The URL's path means nothing to gRPC, and grpc_port belongs to Tempo, whose
+		// gRPC API listens apart from its HTTP one.
+		conn, err := grpc.NewClient(address, append(opts, jaeger.DialOptions()...)...)
+		if err != nil {
 			zl.Error().Msgf("Error creating client: %v", err)
 			return nil, err
 		}
-
+		// The timeout is the running config's, as on the HTTP branch: a config posted to
+		// /api/tracing/check may leave query_timeout out, and a zero would leave the health probe
+		// with no deadline at all.
+		timeout := time.Duration(config.Get().ExternalServices.Tracing.QueryTimeout) * time.Second
+		client := jaeger.NewGRPCClient(apiv3.NewQueryServiceClient(conn), timeout)
+		zl.Info().Msgf("Created Jaeger api_v3 gRPC client address=[%s]", address)
+		return &Client{conn: conn, customHeaders: cfgTracing.CustomHeaders, grpcClient: client, provider: config.JaegerProvider, transport: transportGRPC}, nil
 	} else {
-		// Legacy HTTP client
-		zl.Trace().Msgf("Using legacy HTTP client for Tracing: url=[%v], auth.type=[%s]", u, auth.Type)
+		// HTTP client
+		zl.Trace().Msgf("Using HTTP client for Tracing: url=[%v], auth.type=[%s]", u, auth.Type)
 		timeout := time.Duration(config.Get().ExternalServices.Tracing.QueryTimeout) * time.Second
 		transport, err := httputil.CreateTransport(conf, &auth, &http.Transport{}, timeout, cfgTracing.CustomHeaders)
 		if err != nil {
@@ -198,7 +206,7 @@ func newClient(ctx context.Context, conf *config.Config, token string) (*Client,
 		client := http.Client{Transport: transport, Timeout: timeout}
 		zl.Info().Msgf("Create Tracing HTTP client [%s]", u)
 
-		if cfgTracing.Provider == config.TempoProvider {
+		if provider == config.TempoProvider {
 			httpTracingClient, err = tempo.NewOtelClient(ctx)
 			if err != nil {
 				zl.Error().Msgf("Error creating HTTP client: %v", err)
@@ -224,16 +232,24 @@ func newClient(ctx context.Context, conf *config.Config, token string) (*Client,
 					zl.Error().Msgf("Error creating gRPC Tempo Client: %v", err)
 					return nil, err
 				}
-				return &Client{baseURL: u, customHeaders: cfgTracing.CustomHeaders, grpcClient: streamClient, httpClient: client, httpTracingClient: httpTracingClient, provider: config.TempoProvider, transport: transportGRPC}, nil
+				return &Client{baseURL: u, conn: clientConn, customHeaders: cfgTracing.CustomHeaders, grpcClient: streamClient, httpClient: client, httpTracingClient: httpTracingClient, provider: config.TempoProvider, transport: transportGRPC}, nil
 			}
 			return &Client{baseURL: u, customHeaders: cfgTracing.CustomHeaders, httpClient: client, httpTracingClient: httpTracingClient, provider: config.TempoProvider, transport: transportHTTP}, nil
 		}
-		httpTracingClient, err = jaeger.NewJaegerClient(client, u)
-		if err != nil {
-			return nil, err
-		}
+		zl.Debug().Msgf("Jaeger api_v3 HTTP base: [%s]", u.JoinPath("/api/v3").Redacted())
+		httpTracingClient = jaeger.NewHTTPClient()
 		return &Client{baseURL: u, customHeaders: cfgTracing.CustomHeaders, httpClient: client, httpTracingClient: httpTracingClient, provider: config.JaegerProvider, transport: transportHTTP}, nil
 	}
+}
+
+// Close releases the gRPC connection the client dialled, if it dialled one. The client Kiali
+// keeps runs for the process's lifetime and is never closed; a client built for one request, as
+// /api/tracing/check builds one, must be.
+func (in *Client) Close() error {
+	if in == nil || in.conn == nil {
+		return nil
+	}
+	return in.conn.Close()
 }
 
 // GetAppTraces fetches traces of an app
