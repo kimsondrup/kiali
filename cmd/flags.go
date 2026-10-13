@@ -100,7 +100,7 @@ func (opts *portForwardingOptions) addFlags(cmd *cobra.Command) {
 	cmd.Flags().BoolVar(&opts.portForwardToGrafanaFlag, "port-forward-grafana", opts.portForwardToGrafanaFlag,
 		"Enables port-forwarding to the Grafana pod in the home cluster. Use this when your dashboard service is not accessible from the outside of the cluster. Otherwise set the URL in the config file.")
 	cmd.Flags().BoolVar(&opts.portForwardToTracingFlag, "port-forward-tracing", opts.portForwardToTracingFlag,
-		"Enables port-forwarding to the Jaeger pod in the home cluster. Use this when your tracing service is not accessible from the outside of the cluster. Otherwise set the URL in the config file.")
+		"Enables port-forwarding to the Jaeger pod in the home cluster. Use this when your tracing service is not accessible from the outside of the cluster. Otherwise set the URL in the config file. The forwarded Jaeger URL keeps the path of the configured internal_url (/jaeger by default, the base path of Istio's addon); for a Jaeger served at the root, configure an internal_url without a path.")
 	cmd.Flags().BoolVar(&opts.enableTracing, "enable-tracing", opts.enableTracing, "Enable tracing.")
 	cmd.Flags().BoolVar(&opts.enableDashboards, "enable-dashboards", opts.enableDashboards, "Enable dashboards.")
 	cmd.Flags().BoolVar(&opts.disablePrometheus, "disable-prometheus", opts.disablePrometheus, "Disable Prometheus metrics store. Graph, metrics, and request-rate health will be unavailable.")

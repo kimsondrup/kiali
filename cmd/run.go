@@ -16,6 +16,7 @@ import (
 	"github.com/kiali/kiali/config"
 	"github.com/kiali/kiali/kubernetes"
 	"github.com/kiali/kiali/log"
+	"github.com/kiali/kiali/tracing"
 	"github.com/kiali/kiali/util/httputil"
 )
 
@@ -213,7 +214,7 @@ func portForwardToTracing(ctx context.Context, localClient kubernetes.ClientInte
 	if err != nil {
 		return err
 	}
-	conf.ExternalServices.Tracing.InternalURL = fmt.Sprintf("http://127.0.0.1:%d", localPort)
+	conf.ExternalServices.Tracing.InternalURL = tracing.ForwardedURL(conf.ExternalServices.Tracing, localPort)
 	// The forwarded port (--tracing-port, 16686 by default, or Tempo's 3200) is the query service's
 	// HTTP port, so the client reads it over HTTP: the api_v3 HTTP gateway for Jaeger, the HTTP API
 	// for Tempo. HTTP also keeps the version check on the forwarded port, since it strips the port
