@@ -193,8 +193,8 @@ func get(ctx context.Context, client http.Client, baseURL *url.URL, route string
 		zl.Debug().Msgf("Jaeger api_v3 request failed: %s [URL: %s]", err, u.Redacted())
 		// HTTP sent to a gRPC port reads the HTTP/2 SETTINGS frame as a malformed status line,
 		// which on its own does not say that use_grpc and the port disagree.
-		if strings.Contains(err.Error(), "malformed HTTP response") {
-			return nil, 0, where, wrongTransportError(where, err)
+		if wrongTransport := HTTPWrongTransportError(where, err); wrongTransport != nil {
+			return nil, 0, where, wrongTransport
 		}
 		return nil, 0, where, fmt.Errorf("Jaeger api_v3 request to %s failed: %w", where, err)
 	}

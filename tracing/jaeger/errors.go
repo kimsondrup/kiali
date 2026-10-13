@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -86,4 +87,14 @@ func notAPIv3Error(where string, cause error) error {
 // matching the port in the URL.
 func wrongTransportError(where string, cause error) error {
 	return fmt.Errorf("%s answered in another protocol, which means the wrong port or transport (check that use_grpc matches the port in the URL): %w", where, cause)
+}
+
+// HTTPWrongTransportError is wrongTransportError for an HTTP request that reached a gRPC port,
+// and nil for a request that failed in any other way. Discovery words its HTTP probes through it,
+// so that its log names the cause the client's own error names.
+func HTTPWrongTransportError(where string, err error) error {
+	if err == nil || !strings.Contains(err.Error(), "malformed HTTP response") {
+		return nil
+	}
+	return wrongTransportError(where, err)
 }

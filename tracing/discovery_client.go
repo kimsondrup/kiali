@@ -3,7 +3,6 @@ package tracing
 import (
 	"context"
 	"crypto/x509"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -22,7 +21,7 @@ import (
 	"github.com/kiali/kiali/log"
 	"github.com/kiali/kiali/models"
 	"github.com/kiali/kiali/tracing/jaeger"
-	"github.com/kiali/kiali/tracing/jaeger/model"
+	"github.com/kiali/kiali/tracing/jaeger/apiv3"
 	"github.com/kiali/kiali/tracing/otel"
 	"github.com/kiali/kiali/tracing/tempo"
 	"github.com/kiali/kiali/tracing/tempo/querypb"
@@ -253,27 +252,27 @@ func validateGRPCClient(ctx context.Context, conf *config.Config, auth *config.A
 			logs = append(logs, models.LogLine{Time: time.Now(), Test: fmt.Sprintf("gRPC Client port [%s]", port), Result: fmt.Sprintf("Adding [%v] custom headers to Tracing client", len(cfgTracing.CustomHeaders))})
 			ctx = metadata.NewOutgoingContext(ctx, metadata.New(cfgTracing.CustomHeaders))
 		}
-		conn, err := grpc.NewClient(address, opts...)
+		conn, err := grpc.NewClient(address, append(opts, jaeger.DialOptions()...)...)
 		if err == nil {
-			cc := model.NewQueryServiceClient(conn)
-			clientgRPC, err := jaeger.NewGRPCJaegerClient(cc)
-			if err != nil {
-				logs = append(logs, models.LogLine{Time: time.Now(), Test: fmt.Sprintf("Create gRPC Client port [%s]", port), Result: fmt.Sprintf("Error creating gRPC Client: [%s]", err.Error())})
-			} else {
-				ok, err := clientgRPC.GetServices(ctx)
-				if ok {
-					authType := auth.Type
-					if authType == "" {
-						authType = "none"
-					}
-					validConfig := models.ValidConfig{AuthType: authType, Url: fmt.Sprintf("%s://%s", parsedUrl.Scheme, address), Provider: "jaeger", UseGRPC: true}
-					logs = append(logs, models.LogLine{Time: time.Now(), Test: fmt.Sprintf("Create gRPC Client port [%s] Ok", port), Result: "Valid gRPC Client found"})
-					return &validConfig, logs, nil
-				} else {
-					logs = append(logs, models.LogLine{Time: time.Now(), Test: fmt.Sprintf("GetServices gRPC Client port [%s]", port), Result: fmt.Sprintf("error getting gRPC Services: [%s]", err.Error())})
-					return nil, logs, fmt.Errorf("error getting gRPC Services: [%s]", err.Error())
+			defer conn.Close()
+			timeout := time.Duration(cfgTracing.QueryTimeout) * time.Second
+			clientgRPC := jaeger.NewGRPCClient(apiv3.NewQueryServiceClient(conn), timeout)
+			// The probe is the one the client runs as its health check, so an endpoint is only
+			// suggested if the client can read it. Its errors already say when the port does not
+			// serve api_v3 or speaks HTTP.
+			services, err := clientgRPC.GetServicesList(ctx)
+			if err == nil {
+				authType := auth.Type
+				if authType == "" {
+					authType = "none"
 				}
+				ns := hasNamespacedServiceName(services)
+				validConfig := models.ValidConfig{AuthType: authType, NamespaceSelector: &ns, Url: fmt.Sprintf("%s://%s", parsedUrl.Scheme, address), Provider: "jaeger", UseGRPC: true}
+				logs = append(logs, models.LogLine{Time: time.Now(), Test: fmt.Sprintf("Create gRPC Client port [%s] Ok", port), Result: "Valid Jaeger api_v3 gRPC Client found"})
+				return &validConfig, logs, nil
 			}
+			logs = append(logs, models.LogLine{Time: time.Now(), Test: fmt.Sprintf("GetServices gRPC Client port [%s]", port), Result: fmt.Sprintf("error getting Jaeger api_v3 gRPC Services: [%s]", err.Error())})
+			return nil, logs, fmt.Errorf("error getting Jaeger api_v3 gRPC Services: [%w]", err)
 		} else {
 			logs = append(logs, models.LogLine{Time: time.Now(), Test: fmt.Sprintf("gRPC client port [%s]", port), Result: fmt.Sprintf("error creating client: %s", err.Error())})
 			return nil, logs, fmt.Errorf("error creating client %s", err.Error())
@@ -282,7 +281,6 @@ func validateGRPCClient(ctx context.Context, conf *config.Config, auth *config.A
 		logs = append(logs, models.LogLine{Time: time.Now(), Test: fmt.Sprintf("gRPC client port [%s]", port), Result: fmt.Sprintf("Error creating dial options: %s", err.Error())})
 		return nil, logs, fmt.Errorf("error creating client %s", err.Error())
 	}
-	return nil, logs, nil
 }
 
 func parsedURLHostname(parsedUrl models.ParsedUrl) string {
@@ -295,6 +293,10 @@ func parsedURLHostname(parsedUrl models.ParsedUrl) string {
 	return parsedUrl.Host
 }
 
+// jaegerServicesPath is the api_v3 route every Jaeger probe asks, the same one the client's health
+// check asks, so discovery never suggests an endpoint the client then cannot read.
+const jaegerServicesPath = "/api/v3/services"
+
 // validateJaegerHTTP validate specific path for Jaeger and HTTP endpoint
 func validateJaegerHTTP(ctx context.Context, client http.Client, zl *zerolog.Logger, parsedUrl models.ParsedUrl, port string) ([]models.ValidConfig, []models.LogLine) {
 	logs := []models.LogLine{}
@@ -302,7 +304,7 @@ func validateJaegerHTTP(ctx context.Context, client http.Client, zl *zerolog.Log
 
 	// We assume it is Jaeger. Try Jaeger URL
 	validEndpoint := fmt.Sprintf("%s://%s:%s/jaeger", parsedUrl.Scheme, parsedUrl.Host, port)
-	endpointJ := fmt.Sprintf("%s/api/services", validEndpoint)
+	endpointJ := validEndpoint + jaegerServicesPath
 	vc, ll, err := validateEndpoint(ctx, client, zl, endpointJ, validEndpoint, "jaeger")
 	if err == nil {
 		validConfigs = append(validConfigs, *vc)
@@ -311,7 +313,7 @@ func validateJaegerHTTP(ctx context.Context, client http.Client, zl *zerolog.Log
 
 	// Try Tempo URL
 	validEndpoint = fmt.Sprintf("%s://%s:%s", parsedUrl.Scheme, parsedUrl.Host, port)
-	endpointJ = fmt.Sprintf("%s/api/services", validEndpoint)
+	endpointJ = validEndpoint + jaegerServicesPath
 	vc, ll, err = validateEndpoint(ctx, client, zl, endpointJ, validEndpoint, "jaeger")
 	if err == nil {
 		validConfigs = append(validConfigs, *vc)
@@ -350,7 +352,7 @@ func validateTempoHTTP(ctx context.Context, client http.Client, zl *zerolog.Logg
 
 		// Try GW Jaeger Endpoint
 		validEndpoint = fmt.Sprintf("%s://%s:%s/api/traces/v1/%s", parsedUrl.Scheme, parsedUrl.Host, port, tenant)
-		endpointJ = fmt.Sprintf("%s/api/services", validEndpoint)
+		endpointJ = validEndpoint + jaegerServicesPath
 		vc, ll, err = validateEndpoint(ctx, client, zl, endpointJ, validEndpoint, "jaeger")
 		if err == nil {
 			validConfigs = append(validConfigs, *vc)
@@ -369,7 +371,7 @@ func validateTempoHTTP(ctx context.Context, client http.Client, zl *zerolog.Logg
 
 		// Try GW Jaeger Endpoint
 		validEndpoint = fmt.Sprintf("%s://%s:%s/api/traces/v1", parsedUrl.Scheme, parsedUrl.Host, port)
-		endpointJ = fmt.Sprintf("%s/api/traces/v1/api/services", validEndpoint)
+		endpointJ = validEndpoint + jaegerServicesPath
 		vc, ll, err = validateEndpoint(ctx, client, zl, endpointJ, validEndpoint, "jaeger")
 		if err == nil {
 			validConfigs = append(validConfigs, *vc)
@@ -396,7 +398,7 @@ func validateSimpleTempoHTTP(ctx context.Context, client http.Client, zl *zerolo
 
 	// Try Jaeger?
 	validEndpoint = fmt.Sprintf("%s://%s:%s", parsedUrl.Scheme, parsedUrl.Host, port)
-	endpointJ = fmt.Sprintf("%s/api/services", validEndpoint)
+	endpointJ = validEndpoint + jaegerServicesPath
 	vc, ll, err = validateEndpoint(ctx, client, zl, endpointJ, validEndpoint, "jaeger")
 	if err == nil {
 		validConfigs = append(validConfigs, *vc)
@@ -416,6 +418,11 @@ func validateEndpoint(ctx context.Context, client http.Client, zl *zerolog.Logge
 		msg := fmt.Sprintf("[Discovery client] Cannot query endpoint: %s. Code [%d].", endpoint, code)
 		if reqError != nil {
 			msg = fmt.Sprintf("%s. Error: %s", msg, reqError.Error())
+		}
+		if provider == "jaeger" {
+			if wrongTransport := jaeger.HTTPWrongTransportError(endpoint, reqError); wrongTransport != nil {
+				msg = fmt.Sprintf("[Discovery client] %s", wrongTransport)
+			}
 		}
 		if resp != nil {
 			msg = fmt.Sprintf("%s. Response: %s", msg, resp)
@@ -458,22 +465,17 @@ func validateEndpoint(ctx context.Context, client http.Client, zl *zerolog.Logge
 	}
 
 	if provider == "jaeger" {
-		var response models.TracingServices
-		if errMarshal := json.Unmarshal(resp, &response); errMarshal != nil {
-			msg := fmt.Sprintf("[Discovery client] Error unmarshalling Jaeger response: %s [URL: %v]", errMarshal, endpoint)
+		// The client's own decoder, so an answer it would refuse (the pre-api_v3 {"data":...}
+		// shape, or the Jaeger UI's HTML under a wrong base path) is not suggested.
+		services, errDecode := jaeger.DecodeServices(resp)
+		if errDecode != nil {
+			msg := fmt.Sprintf("[Discovery client] Not a Jaeger api_v3 answer (Jaeger 1.54 or newer is required): %s [URL: %v]", errDecode, endpoint)
 			logs = append(logs, models.LogLine{Time: time.Now(), Test: endpoint, Result: msg})
 			zl.Trace().Msg(msg)
 			return nil, logs, errors.New(msg)
 		}
-		ns := false
+		ns := hasNamespacedServiceName(services)
 		vc := models.ValidConfig{Url: validEndpoint, Provider: provider, UseGRPC: false}
-		for _, rd := range response.Data {
-			parts := strings.Split(rd, ".")
-			if len(parts) > 1 {
-				ns = true
-				break
-			}
-		}
 		vc.NamespaceSelector = &ns
 		msg := fmt.Sprintf("[Discovery client] Found valid Config %v", vc)
 		logs = append(logs, models.LogLine{Time: time.Now(), Test: endpoint, Result: msg})
@@ -504,4 +506,16 @@ func validateEndpoint(ctx context.Context, client http.Client, zl *zerolog.Logge
 	logs = append(logs, models.LogLine{Time: time.Now(), Test: endpoint, Result: msg})
 	zl.Trace().Msg(msg)
 	return &vc, logs, nil
+}
+
+// hasNamespacedServiceName guesses namespace_selector from the service names a store reports: a
+// name with a dot is taken to be "<service>.<namespace>", which is how Istio names its spans when
+// the namespace is part of the service name.
+func hasNamespacedServiceName(services []string) bool {
+	for _, service := range services {
+		if strings.Contains(service, ".") {
+			return true
+		}
+	}
+	return false
 }
