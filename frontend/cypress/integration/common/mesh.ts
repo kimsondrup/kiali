@@ -474,15 +474,18 @@ When('user changes the provider in the Tester tab', () => {
       }
       const editorText = editor.getValue();
 
-      let replacer = 'tempo';
-      let provider = 'jaeger';
+      // Read the provider off its own key and rewrite the whole value. Deciding the direction
+      // by whether the text mentions "tempo" anywhere misreads a jaeger configuration whose
+      // internal_url names a Tempo host, and then rewrites nothing.
+      const providerKey = /^(\s*provider\s*:\s*)([\w-]+)/m;
+      const current = editorText.match(providerKey);
 
-      if (editorText.includes('tempo')) {
-        replacer = 'jaeger';
-        provider = 'tempo';
+      if (!current) {
+        throw new Error('No provider found in the tracing configuration');
       }
 
-      const newText = editorText.replace(`provider: ${provider}`, `provider: ${replacer}`);
+      const replacer = current[2] === 'tempo' ? 'jaeger' : 'tempo';
+      const newText = editorText.replace(providerKey, `$1${replacer}`);
       const model = editor.getModel();
       const fullRange = model.getFullModelRange();
       editor.executeEdits('cypress', [{ range: fullRange, text: newText }]);
