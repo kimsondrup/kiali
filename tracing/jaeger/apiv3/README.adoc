@@ -1,0 +1,83 @@
+=== apiv3
+
+Jaeger's api_v3 query IDL, cut down to what Kiali calls and generated with
+`protoc-gen-go` and `protoc-gen-go-grpc`.
+
+It carries the three RPCs of `jaeger.api_v3.QueryService` Kiali uses - `GetTrace`,
+`FindTraces` and `GetServices` - and their request and response messages:
+`GetTraceRequest`, `TraceQueryParameters`, `FindTracesRequest`, `GetServicesRequest` and
+`GetServicesResponse`. The two searches answer with OTLP `TracesData`, which the published
+`go.opentelemetry.io/proto/otlp` module describes, so no OTLP type is generated here.
+
+The proto package stays `jaeger.api_v3`, because it names the gRPC methods Kiali invokes:
+`/jaeger.api_v3.QueryService/FindTraces` and the other two.
+
+==== Source and trimming rule
+
+`query_service.proto` is trimmed by hand from
+https://github.com/jaegertracing/jaeger-idl/blob/v0.14.0/proto/api_v3/query_service.proto[jaegertracing/jaeger-idl `proto/api_v3/query_service.proto` at v0.14.0].
+
+* A message is kept only if one of the three RPCs takes or returns it.
+* A field is kept only if Kiali sends or reads it. Every other field number is
+  `reserved`, with a comment naming what upstream declares there, so `protoc` rejects
+  anyone declaring something else at that number.
+* Field names, numbers and types are upstream's.
+
+Left out of the kept messages: `operation_name` and `duration_max`, which no caller
+supplies; the `raw_traces` flags, because Kiali wants the clock-skew-adjusted trace that
+is the default; `GetTraceRequest`'s time window, which a trace detail request has no
+value for; `pagination`, which `FindTraces` refuses; and `filter`, the Alpha structured
+query, which is the only field that would pull in `expression/v1` and which a server
+without the `jaeger.query.structuredFilters` gate refuses rather than ignores.
+
+==== Versions checked
+
+`hack/gen-apiv3-protos.sh` fetches upstream's IDL at each release in
+`JAEGER_IDL_VERSIONS` and stops unless every field the copy declares appears there with
+the same name, number and type:
+
+* v0.6.0, which Jaeger 2.17.0 builds against. That is the release Istio 1.31's
+  `samples/addons/jaeger.yaml` ships, and what Kiali's end-to-end tests run.
+* v0.11.4, which Jaeger 2.21.0 builds against.
+* v0.14.0, the release the copy is cut from.
+
+Kiali's documented minimum is Jaeger 1.54. That release carried the IDL in the
+jaeger-idl commit its `idl` submodule pins (a97152c), and it was compared by hand:
+
+* `GetTraceRequest.trace_id` (1), `FindTracesRequest.query` (1),
+  `GetServicesResponse.services` (1) and `TraceQueryParameters` fields
+  `service_name` (1), `attributes` (3), `start_time_min` (4), `start_time_max` (5) and
+  `duration_min` (6) are declared with the same numbers and types.
+* Field 8 of `TraceQueryParameters` is `int32 num_traces` there, where later releases
+  name it `int32 search_depth`. The number and the type are the same, so the gRPC wire
+  is unchanged. Over HTTP the parameter is spelled `query.num_traces` in every release
+  measured (1.54 by its source, 2.17.0, 2.20.0 and 2.21.0 on the wire), which is why
+  Kiali's request builder sends that spelling and never `query.search_depth`.
+* 1.54's HTTP gateway does not read `query.attributes` at all (its source sets `Tags`
+  to nil), and 2.17.0's ignores it too, measured. The gRPC handler reads the attributes
+  on every release. That is why the HTTP transport has to apply the tag filter itself
+  after converting the answer.
+* 1.54 declares no `raw_traces`, `filter` or `pagination`; the copy reserves those
+  numbers and sends none of them, so a 1.54 server reads every request the same way.
+
+==== Why the generated files are committed
+
+Building Kiali needs nothing but a Go toolchain. `protoc`, the two plugins and the
+OpenTelemetry protos are needed only to regenerate, and the script fetches all of them
+at pinned versions.
+
+==== Regenerating
+
+Edit `query_service.proto`, then run `hack/gen-apiv3-protos.sh`. It checks the copy
+against upstream as described above, regenerates `query_service.pb.go` and
+`query_service_grpc.pb.go` with protoc 36.2, `protoc-gen-go` v1.36.11,
+`protoc-gen-go-grpc` v1.5.1 and opentelemetry-proto v1.10.0 (the version go.mod
+requires), and runs goimports over the result so `make format` leaves it unchanged. Set
+`PROTOC` to use a protoc already installed. It needs a network.
+
+There is no make target for it, as there is none for `hack/gen-tempo-protos.sh`.
+
+==== Licence
+
+jaeger-idl is Apache-2.0 as a whole, and the script checks that before generating.
+`LICENSE_APACHE2` is that licence.
