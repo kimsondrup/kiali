@@ -363,6 +363,7 @@ hack/run-integration-tests.sh --test-suite <suite> --tests-only true
 | `frontend-multi-primary` | Frontend multicluster multi-primary tests |
 | `frontend-multi-mesh` | Frontend multi-mesh tests |
 | `frontend-external-kiali` | Frontend tests with external Kiali |
+| `frontend-jaeger` | Frontend tracing tests with Istio's Jaeger addon, over the transport `--use-grpc` picks (default gRPC) |
 | `frontend-tempo` | Frontend tracing tests with Tempo |
 | `local` | Runs Kiali locally (not in-cluster) with smoke Cypress tests |
 | `offline` | Runs Kiali in offline mode with must-gather data |
@@ -445,7 +446,7 @@ make cypress-selected   # Runs @selected tagged tests (tag a scenario with @sele
 | `@multi-primary` | Multi-primary multicluster tests | `frontend-multi-primary` |
 | `@multi-mesh` | Multi-mesh tests | `frontend-multi-mesh` |
 | `@ambient` | Ambient mesh tests | `frontend-ambient` |
-| `@tracing` | Distributed tracing (Tempo) tests | `frontend-tempo` |
+| `@tracing` | Distributed tracing (Jaeger and Tempo) tests | `frontend-jaeger`, `frontend-tempo` |
 | `@offline` | Offline mode tests | `offline` |
 | `@selected` | Manual selection for debugging | N/A |
 

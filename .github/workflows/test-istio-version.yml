@@ -180,6 +180,16 @@ jobs:
       istio_version: ${{ needs.initialize.outputs.istio-version }}
       sail_operator_git_ref: ${{ needs.initialize.outputs.sail-operator-git-ref }}
 
+  integration_tests_frontend_jaeger:
+    name: Run Jaeger tracing frontend integration tests
+    uses: ./.github/workflows/integration-tests-frontend-jaeger.yml
+    needs: [initialize, build_backend]
+    with:
+      target_branch: ${{ needs.initialize.outputs.target-branch }}
+      build_branch: ${{ needs.initialize.outputs.build-branch }}
+      istio_version: ${{ needs.initialize.outputs.istio-version }}
+      sail_operator_git_ref: ${{ needs.initialize.outputs.sail-operator-git-ref }}
+
   integration_tests_backend_mcp:
     name: Run backend MCP integration tests
     uses: ./.github/workflows/integration-tests-backend-mcp.yml

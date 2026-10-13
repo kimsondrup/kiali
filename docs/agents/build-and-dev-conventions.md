@@ -203,7 +203,7 @@ The `test` target requires `setup-envtest` (from `sigs.k8s.io/controller-runtime
 
 Full end-to-end API tests against a live cluster, in `tests/integration/tests/`. They use `go test` with a 30-minute timeout and generate JUnit XML output via `go-junit-report`.
 
-The `hack/run-integration-tests.sh` script is the canonical entry point for both CI and local runs. It accepts a `--test-suite` flag selecting from: `backend`, `frontend`, `frontend-core-1`, `frontend-core-2`, `frontend-ambient`, `frontend-primary-remote`, `frontend-multi-primary`, `frontend-multi-mesh`, `frontend-external-kiali`, `frontend-tempo`, `backend-external-controlplane`, `local`, `offline`, `ai-chatbot`, and several others. The default suite is `backend`.
+The `hack/run-integration-tests.sh` script is the canonical entry point for both CI and local runs. It accepts a `--test-suite` flag selecting from: `backend`, `frontend`, `frontend-core-1`, `frontend-core-2`, `frontend-ambient`, `frontend-primary-remote`, `frontend-multi-primary`, `frontend-multi-mesh`, `frontend-external-kiali`, `frontend-jaeger`, `frontend-tempo`, `backend-external-controlplane`, `local`, `offline`, `ai-chatbot`, and several others. The default suite is `backend`.
 
 The script handles setup (cluster provisioning, Kiali install, Istio install) and teardown, with flags like `--setup-only` and `--tests-only` for split execution.
 
@@ -267,7 +267,7 @@ Kiali uses GitHub Actions. Workflows are in `.github/workflows/`:
 - `integration-tests-frontend-core-1.yml`, `integration-tests-frontend-core-2.yml`, `integration-tests-frontend-core-optional.yml`
 - `integration-tests-frontend-ambient.yml`, `integration-tests-frontend-ambient-multi-primary.yml`
 - `integration-tests-frontend-multicluster-multi-primary.yml`, `integration-tests-frontend-multicluster-primary-remote.yml`, `integration-tests-frontend-multicluster-external-kiali.yml`, `integration-tests-frontend-multi-mesh.yml`
-- `integration-tests-frontend-tempo.yml`, `integration-tests-frontend-chat.yml`, `integration-tests-frontend-local-offline.yml`
+- `integration-tests-frontend-jaeger.yml`, `integration-tests-frontend-tempo.yml`, `integration-tests-frontend-chat.yml`, `integration-tests-frontend-local-offline.yml`
 - `integration-tests-frontend.yml` — umbrella workflow
 
 The pipeline architecture separates backend and frontend builds into reusable called workflows, then fans them into multiple parallel integration test runs. This allows the backend binary and frontend artifact to be built once and reused across all integration test jobs.
