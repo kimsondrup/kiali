@@ -31,6 +31,34 @@ func TestAppTraces(t *testing.T) {
 	assertTraces(traces, statusCode, err, require)
 }
 
+// TestTraceDetail fetches the detail of a trace the search reported. Each provider builds the
+// detail on a path of its own, separate from the search, so the search tests above say nothing
+// about it: the IDs have to come back in hex at the width the search reported them, or the UI
+// cannot match the detail to the row it was opened from, and the spans have to carry their
+// parent references, or the trace renders as unrelated spans.
+func TestTraceDetail(t *testing.T) {
+	require := require.New(t)
+	traces, statusCode, err := kiali.Traces("services", "details", kiali.BOOKINFO)
+	assertTraces(traces, statusCode, err, require)
+	traceID := string(traces.Data[0].TraceID)
+
+	trace, statusCode, err := kiali.TraceDetail(traceID)
+	require.NoError(err)
+	require.Equal(200, statusCode)
+	require.NotNil(trace)
+	require.Regexp(`^[0-9a-f]{32}$`, string(trace.Data.TraceID))
+	require.Equal(traceID, string(trace.Data.TraceID))
+	require.NotEmpty(trace.Data.Spans)
+
+	// The root span has no parent, so only some span has to carry a reference.
+	referenced := false
+	for _, span := range trace.Data.Spans {
+		require.Regexp(`^[0-9a-f]{16}$`, string(span.SpanID))
+		referenced = referenced || len(span.References) > 0
+	}
+	require.True(referenced, "no span of trace %s references its parent", traceID)
+}
+
 func TestWrongTracesType(t *testing.T) {
 	require := require.New(t)
 	name := "details"

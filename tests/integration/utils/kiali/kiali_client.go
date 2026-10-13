@@ -301,6 +301,18 @@ func Traces(objectType, name, namespace string) (*models.TracingResponse, int, e
 	}
 }
 
+func TraceDetail(traceID string) (*models.TracingSingleTrace, int, error) {
+	url := fmt.Sprintf("%s/api/traces/%s", client.kialiURL, traceID)
+	trace := new(models.TracingSingleTrace)
+
+	code, err := getRequestAndUnmarshalIntoWithCustomTimeout(url, TIMEOUT_TRACING, trace)
+	if err == nil {
+		return trace, code, nil
+	} else {
+		return nil, code, err
+	}
+}
+
 func Spans(objectType, name, namespace string) ([]models.TracingSpan, int, error) {
 	url := fmt.Sprintf("%s/api/namespaces/%s/%s/%s/spans?startMicros=%d&tags=&limit=100", client.kialiURL, namespace, objectType, name, TimeSince())
 	spans := new([]models.TracingSpan)
