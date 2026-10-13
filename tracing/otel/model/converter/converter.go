@@ -118,7 +118,7 @@ func convertOtelSpan(span *querypb.Span, serviceName string, traceID jsonModel.T
 
 	spanID := convertSpanId(span.GetSpanID())
 	modelSpan := jsonModel.Span{
-		Duration:      duration / 1000, // Provided in ns, Jaeger uses ms
+		Duration:      duration / 1000, // Tempo reports nanoseconds; the span model is in microseconds
 		Flags:         0,
 		Logs:          []jsonModel.Log{},
 		OperationName: operationName,

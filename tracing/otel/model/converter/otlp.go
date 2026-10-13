@@ -247,8 +247,10 @@ func tagsFromSpan(span *tracepb.Span, spanID jsonModel.SpanID, scope *commonpb.I
 		tags = append(tags, jsonModel.KeyValue{Key: "span.kind", Type: jsonModel.StringType, Value: kind})
 	}
 
-	// A span whose status is an error MUST carry an error tag with the Boolean value true.
-	// https://opentelemetry.io/docs/specs/otel/trace/sdk_exporters/jaeger
+	// A span whose status is an error MUST carry an error tag with the Boolean value true. The
+	// Jaeger exporter specification says so; it was removed in v1.32.0, and the mapping to non-OTLP
+	// formats that remains names only the otel.status_code tags statusTags emits.
+	// https://github.com/open-telemetry/opentelemetry-specification/blob/v1.31.0/specification/trace/sdk_exporters/jaeger.md#error-flag
 	if isError {
 		tags = append(tags, jsonModel.KeyValue{Key: errorAttribute, Type: jsonModel.BoolType, Value: true})
 	}
