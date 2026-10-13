@@ -180,10 +180,17 @@ func processStream(ctx context.Context, stream querypb.StreamingQuerier_SearchCl
 	return traces, nil
 }
 
-// processServices
+// processServices reports each name of a Tempo search stream once, in the order the stream first
+// named it.
+//
+// Tempo's StreamingQuerier.Search can send one trace in more than one message, so appending every
+// message's traces names that trace once per message it appears in. The names repeat across
+// traces as well - a trace is named after its root span, and the traces of one endpoint share it.
 func processServices(ctx context.Context, stream querypb.StreamingQuerier_SearchClient) ([]string, error) {
 	zl := getLoggerFromContextGRPCTempo(ctx)
+
 	services := []string{}
+	seen := map[string]bool{}
 
 	for received, err := stream.Recv(); err != io.EOF; received, err = stream.Recv() {
 		if err != nil {
@@ -194,8 +201,11 @@ func processServices(ctx context.Context, stream querypb.StreamingQuerier_Search
 			zl.Error().Msgf("[gRPC Tempo] stream error: %v", err)
 			return nil, fmt.Errorf("[gRPC Tempo] Tracing gRPC client, stream error: %v", err)
 		}
-		for _, trace := range received.Traces {
-			services = append(services, trace.RootTraceName)
+		for _, trace := range received.GetTraces() {
+			if name := trace.GetRootTraceName(); !seen[name] {
+				seen[name] = true
+				services = append(services, name)
+			}
 		}
 	}
 	return services, nil

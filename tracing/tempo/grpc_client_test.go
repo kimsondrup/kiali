@@ -241,3 +241,26 @@ func TestProcessStreamReportsAStreamError(t *testing.T) {
 	assert.Nil(t, traces)
 	assert.Contains(t, err.Error(), "block scheduler unavailable")
 }
+
+// TestProcessServicesNamesARepeatedTraceOnce covers a trace Tempo updated between two diffs on the
+// discovery probe. A stream of [t1] and then [t1, t2] names two traces, and two traces of one
+// endpoint share the root span name they are named after, so a list that repeats either is wrong.
+func TestProcessServicesNamesARepeatedTraceOnce(t *testing.T) {
+	named := func(traceID, rootTraceName string) *querypb.TraceSearchMetadata {
+		trace := searchTrace(traceID, "0101010101010101")
+		trace.RootTraceName = rootTraceName
+		return trace
+	}
+
+	services, err := processServices(context.Background(), searchStream(t, &scriptedQuerier{messages: []*querypb.SearchResponse{
+		searchResponse(named("aa00000000000000000000000000000a", "reviews.bookinfo:9080/*")),
+		searchResponse(
+			named("aa00000000000000000000000000000a", "reviews.bookinfo:9080/*"),
+			named("bb00000000000000000000000000000b", "reviews.bookinfo:9080/*"),
+			named("cc00000000000000000000000000000c", "ratings.bookinfo:9080/*"),
+		),
+	}}))
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"reviews.bookinfo:9080/*", "ratings.bookinfo:9080/*"}, services)
+}
