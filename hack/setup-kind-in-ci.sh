@@ -26,6 +26,28 @@ infomsg() {
   echo "[INFO] ${1}"
 }
 
+# Prints the helm arguments that choose Kiali's Jaeger transport, one per line, for the
+# --use-grpc value in $1. Empty prints nothing, so Kiali keeps its shipped tracing
+# defaults. The internal_url follows the transport because Istio's Jaeger add-on Service
+# serves the query gRPC API on port 16685 and the HTTP API on port 80 (targetPort 16686,
+# base path /jaeger), so one address cannot serve both.
+jaeger_tracing_transport_args() {
+  case "${1}" in
+    true)
+      echo "--set"
+      echo "external_services.tracing.internal_url=http://tracing.istio-system:16685/jaeger"
+      echo "--set"
+      echo "external_services.tracing.use_grpc=true"
+      ;;
+    false)
+      echo "--set"
+      echo "external_services.tracing.internal_url=http://tracing.istio-system:80/jaeger"
+      echo "--set"
+      echo "external_services.tracing.use_grpc=false"
+      ;;
+  esac
+}
+
 determine_tracing_use_waypoint_name() {
   # use_waypoint_name is needed for Istio < 1.28 and Istio >= 1.30 (not for 1.28.x / 1.29.x)
   if [ -z "${AMBIENT:-}" ]; then
@@ -123,9 +145,11 @@ Options:
     If Tempo will be installed as the tracing platform
     instead of Jaeger
 -ug|--use-grpc <true|false>
-    Whether Kiali queries the tracing backend over gRPC
-    instead of HTTP.
-    Default: false
+    Whether Kiali queries the tracing backend (Jaeger or Tempo)
+    over gRPC instead of HTTP. For Jaeger it also picks the
+    internal_url of the matching port on the add-on's Service.
+    Empty keeps Kiali's tracing defaults for Jaeger, and HTTP for Tempo.
+    Default: <empty>
 HELP
 }
 
@@ -213,7 +237,11 @@ ENABLE_CACHE="${ENABLE_CACHE:-false}"
 KIALI_ONLY="${KIALI_ONLY:-false}"
 KIALI_VERSION="${KIALI_VERSION:-dev}"
 TEMPO="${TEMPO:-false}"
-USE_GRPC="${USE_GRPC:-false}"
+USE_GRPC="${USE_GRPC:-}"
+if [ -n "${USE_GRPC}" ] && [ "${USE_GRPC}" != "true" ] && [ "${USE_GRPC}" != "false" ]; then
+  echo "--use-grpc option must be one of 'true' or 'false'"
+  exit 1
+fi
 
 if [ "${KIALI_VERSION}" == "dev" ]; then
   KIALI_IMAGE_NAME="localhost/kiali/kiali"
@@ -502,6 +530,15 @@ setup_kind_singlecluster() {
   fi
   infomsg "external_services.tracing.use_waypoint_name=${tracing_use_waypoint_name} (ambient=${AMBIENT:-false}, istio_version=${ISTIO_VERSION:-auto})"
 
+  local jaeger_tracing_args=()
+  mapfile -t jaeger_tracing_args < <(jaeger_tracing_transport_args "${USE_GRPC}")
+  infomsg "Jaeger transport arguments: ${jaeger_tracing_args[*]:-none, the Kiali tracing defaults apply}"
+  # The Jaeger under test is whichever one the installed Istio's add-on ships (2.17.0 as of Istio
+  # 1.31), not a pinned one, so the run records it.
+  local jaeger_image
+  jaeger_image="$(kubectl get deployment jaeger -n istio-system -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null || true)"
+  infomsg "Jaeger image: ${jaeger_image:-none found in istio-system}"
+
   PERSES_ARGS=()
   if [ "${INSTALL_PERSES}" == "true" ]; then
     infomsg "Installing Perses"
@@ -592,6 +629,7 @@ setup_kind_singlecluster() {
     "${PERSES_ARGS[@]}" \
     --set external_services.tracing.enabled="true" \
     --set external_services.tracing.external_url="http://tracing.istio-system:16685/jaeger" \
+    "${jaeger_tracing_args[@]}" \
     "${tracing_use_waypoint_args[@]}" \
     --set external_services.istio.validation_reconcile_interval="5s" \
     --set health_config.rate[0].kind="service" \
@@ -699,7 +737,7 @@ setup_kind_tempo() {
     --set external_services.tracing.provider="tempo" \
     --set external_services.tracing.external_url="http://tempo-cr-query-frontend.tempo:3200" \
     --set external_services.tracing.internal_url="http://tempo-cr-query-frontend.tempo:3200" \
-    --set external_services.tracing.use_grpc="${USE_GRPC}" \
+    --set external_services.tracing.use_grpc="${USE_GRPC:-false}" \
     "${tracing_use_waypoint_args[@]}" \
     --set external_services.istio.validation_reconcile_interval="5s" \
     --set health_config.rate[0].kind="service" \

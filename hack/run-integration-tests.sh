@@ -24,6 +24,7 @@ FRONTEND_PRIMARY_REMOTE="frontend-primary-remote"
 FRONTEND_MULTI_PRIMARY="frontend-multi-primary"
 FRONTEND_MULTI_MESH="frontend-multi-mesh"
 FRONTEND_EXTERNAL_KIALI="frontend-external-kiali"
+FRONTEND_JAEGER="frontend-jaeger"
 FRONTEND_TEMPO="frontend-tempo"
 LOCAL="local"
 MCP_TOOLS="false"
@@ -43,7 +44,7 @@ STERN="false"
 TEMPO="false"
 TEST_SUITE="${BACKEND}"
 TESTS_ONLY="false"
-USE_GRPC="false"
+USE_GRPC=""
 WAYPOINT="false"
 WITH_VIDEO="false"
 KIALI_PID=""
@@ -203,8 +204,8 @@ while [[ $# -gt 0 ]]; do
       ;;
     -ts|--test-suite)
       TEST_SUITE="${2}"
-      if [ "${TEST_SUITE}" != "${BACKEND}" ] && [ "${TEST_SUITE}" != "${BACKEND_EXTERNAL_CONTROLPLANE}" ] && [ "${TEST_SUITE}" != "${FRONTEND}" ] && [ "${TEST_SUITE}" != "${FRONTEND_AMBIENT}" ] && [ "${TEST_SUITE}" != "${FRONTEND_CORE_1}" ] && [ "${TEST_SUITE}" != "${FRONTEND_CORE_2}" ] && [ "${TEST_SUITE}" != "${FRONTEND_CORE_CACHING}" ] && [ "${TEST_SUITE}" != "${FRONTEND_CORE_OPTIONAL}" ] && [ "${TEST_SUITE}" != "${FRONTEND_PRIMARY_REMOTE}" ] && [ "${TEST_SUITE}" != "${FRONTEND_MULTI_PRIMARY}" ] && [ "${TEST_SUITE}" != "${FRONTEND_MULTI_MESH}" ] && [ "${TEST_SUITE}" != "${FRONTEND_EXTERNAL_KIALI}" ] && [ "${TEST_SUITE}" != "${FRONTEND_TEMPO}" ] && [ "${TEST_SUITE}" != "${AI_CHATBOT}" ] && [ "${TEST_SUITE}" != "${LOCAL}" ] && [ "${TEST_SUITE}" != "${OFFLINE}" ]; then
-        echo "--test-suite option must be one of '${BACKEND}', '${BACKEND_EXTERNAL_CONTROLPLANE}', '${FRONTEND}', '${FRONTEND_AMBIENT}', '${FRONTEND_CORE_1}', '${FRONTEND_CORE_2}', '${FRONTEND_CORE_CACHING}', '${FRONTEND_CORE_OPTIONAL}', '${FRONTEND_PRIMARY_REMOTE}', '${FRONTEND_MULTI_PRIMARY}', '${FRONTEND_EXTERNAL_KIALI}', '${FRONTEND_TEMPO}', '${AI_CHATBOT}', '${LOCAL}' or '${OFFLINE}'"
+      if [ "${TEST_SUITE}" != "${BACKEND}" ] && [ "${TEST_SUITE}" != "${BACKEND_EXTERNAL_CONTROLPLANE}" ] && [ "${TEST_SUITE}" != "${FRONTEND}" ] && [ "${TEST_SUITE}" != "${FRONTEND_AMBIENT}" ] && [ "${TEST_SUITE}" != "${FRONTEND_CORE_1}" ] && [ "${TEST_SUITE}" != "${FRONTEND_CORE_2}" ] && [ "${TEST_SUITE}" != "${FRONTEND_CORE_CACHING}" ] && [ "${TEST_SUITE}" != "${FRONTEND_CORE_OPTIONAL}" ] && [ "${TEST_SUITE}" != "${FRONTEND_PRIMARY_REMOTE}" ] && [ "${TEST_SUITE}" != "${FRONTEND_MULTI_PRIMARY}" ] && [ "${TEST_SUITE}" != "${FRONTEND_MULTI_MESH}" ] && [ "${TEST_SUITE}" != "${FRONTEND_EXTERNAL_KIALI}" ] && [ "${TEST_SUITE}" != "${FRONTEND_JAEGER}" ] && [ "${TEST_SUITE}" != "${FRONTEND_TEMPO}" ] && [ "${TEST_SUITE}" != "${AI_CHATBOT}" ] && [ "${TEST_SUITE}" != "${LOCAL}" ] && [ "${TEST_SUITE}" != "${OFFLINE}" ]; then
+        echo "--test-suite option must be one of '${BACKEND}', '${BACKEND_EXTERNAL_CONTROLPLANE}', '${FRONTEND}', '${FRONTEND_AMBIENT}', '${FRONTEND_CORE_1}', '${FRONTEND_CORE_2}', '${FRONTEND_CORE_CACHING}', '${FRONTEND_CORE_OPTIONAL}', '${FRONTEND_PRIMARY_REMOTE}', '${FRONTEND_MULTI_PRIMARY}', '${FRONTEND_EXTERNAL_KIALI}', '${FRONTEND_JAEGER}', '${FRONTEND_TEMPO}', '${AI_CHATBOT}', '${LOCAL}' or '${OFFLINE}'"
         exit 1
       fi
       shift;shift
@@ -298,13 +299,13 @@ Valid command line arguments:
   -to|--tests-only <true|false>
     If true, only run the tests and skip the setup.
     Default: false
-  -ts|--test-suite <${BACKEND}|${BACKEND_EXTERNAL_CONTROLPLANE}|${FRONTEND}|${FRONTEND_AMBIENT}|${FRONTEND_CORE_1}|${FRONTEND_CORE_2}|${FRONTEND_CORE_CACHING}|${FRONTEND_CORE_OPTIONAL}|${FRONTEND_PRIMARY_REMOTE}|${FRONTEND_MULTI_PRIMARY}|${FRONTEND_MULTI_MESH}|${FRONTEND_MULTIPLE_CONTROLPLANES}|${FRONTEND_EXTERNAL_KIALI}|${FRONTEND_TEMPO}|${AI_CHATBOT}|${LOCAL}|${OFFLINE}>
+  -ts|--test-suite <${BACKEND}|${BACKEND_EXTERNAL_CONTROLPLANE}|${FRONTEND}|${FRONTEND_AMBIENT}|${FRONTEND_CORE_1}|${FRONTEND_CORE_2}|${FRONTEND_CORE_CACHING}|${FRONTEND_CORE_OPTIONAL}|${FRONTEND_PRIMARY_REMOTE}|${FRONTEND_MULTI_PRIMARY}|${FRONTEND_MULTI_MESH}|${FRONTEND_MULTIPLE_CONTROLPLANES}|${FRONTEND_EXTERNAL_KIALI}|${FRONTEND_JAEGER}|${FRONTEND_TEMPO}|${AI_CHATBOT}|${LOCAL}|${OFFLINE}>
     Which test suite to run.
     Default: ${BACKEND}
   -ug|--use-grpc <true|false>
     If true, Kiali queries the tracing backend over gRPC instead of HTTP.
-    Just for the frontend-tempo suite.
-    Default: false
+    Just for the ${FRONTEND_TEMPO} and ${FRONTEND_JAEGER} suites.
+    Default: <empty>, which means false for ${FRONTEND_TEMPO} and true for ${FRONTEND_JAEGER}
   -w|--waypoint <true|false>
     If true, configure waypoint for bookinfo namespace in ambient multi-primary setup.
     Default: false
@@ -824,8 +825,9 @@ elif [ "${TEST_SUITE}" == "${FRONTEND_CORE_2}" ]; then
 
   cd "${SCRIPT_DIR}"/../frontend
   set +e
-  # @tracing runs here too: this suite deploys Istio's Jaeger addon and leaves Kiali on its
-  # shipped tracing defaults (jaeger provider, api_v2 over gRPC), which no other wave 1 suite covers.
+  # @tracing runs here too: this suite deploys Istio's Jaeger addon and keeps Kiali's shipped
+  # tracing defaults (jaeger provider, api_v3 over gRPC on port 16685), which no other wave 1
+  # suite covers. The ${FRONTEND_JAEGER} suite runs the same scenarios with the transport chosen.
   TEST_GROUP="@core-2 or @tracing" yarn run cypress:run:test-group:junit
   CYPRESS_EXIT=$?
   set -e
@@ -1068,11 +1070,39 @@ elif [ "${TEST_SUITE}" == "${FRONTEND_EXTERNAL_KIALI}" ]; then
   cd "${SCRIPT_DIR}"/../frontend
   yarn run cypress:run:external-kiali
   detectRaceConditions ${CYPRESS_CLUSTER1_CONTEXT}
+elif [ "${TEST_SUITE}" == "${FRONTEND_JAEGER}" ]; then
+  ensureCypressReady
+
+  if [ "${TESTS_ONLY}" == "false" ]; then
+    # Istio's Jaeger addon, with Kiali's transport chosen explicitly: gRPC reads api_v3 on the
+    # addon Service's port 16685, HTTP reads the api_v3 gateway through its port 80.
+    "${SCRIPT_DIR}"/setup-kind-in-ci.sh --use-grpc ${USE_GRPC:-true} --sail true --auth-strategy token ${ISTIO_VERSION_ARG} ${HELM_CHARTS_DIR_ARG}
+
+    # Install demo apps (the @tracing scenarios read only bookinfo; --bookinfo-only follows the flag, as in the other suites)
+    "${SCRIPT_DIR}"/istio/install-testing-demos.sh -c "kubectl" --bookinfo-only ${BOOKINFO_ONLY}
+  fi
+
+  ensureKialiServerReady
+  # No traces gate here: this suite runs with token auth and ensureKialiTracesReady
+  # queries Kiali without credentials.
+
+  export CYPRESS_BASE_URL="${KIALI_URL}"
+  export CYPRESS_NUM_TESTS_KEPT_IN_MEMORY=0
+  # Recorded video is unusable due to low resources in CI: https://github.com/cypress-io/cypress/issues/4722
+  export CYPRESS_VIDEO="${WITH_VIDEO}"
+
+  if [ "${SETUP_ONLY}" == "true" ]; then
+    exit 0
+  fi
+
+  cd "${SCRIPT_DIR}"/../frontend
+  yarn run cypress:run:tracing
+  detectRaceConditions
 elif [ "${TEST_SUITE}" == "${FRONTEND_TEMPO}" ]; then
   ensureCypressReady
 
   if [ "${TESTS_ONLY}" == "false" ]; then
-    "${SCRIPT_DIR}"/setup-kind-in-ci.sh --tempo true --use-grpc ${USE_GRPC} --sail true --auth-strategy token ${ISTIO_VERSION_ARG} ${HELM_CHARTS_DIR_ARG}
+    "${SCRIPT_DIR}"/setup-kind-in-ci.sh --tempo true --use-grpc ${USE_GRPC:-false} --sail true --auth-strategy token ${ISTIO_VERSION_ARG} ${HELM_CHARTS_DIR_ARG}
 
     # Install demo apps
     "${SCRIPT_DIR}"/istio/install-testing-demos.sh -c "kubectl" --use-gateway-api true --bookinfo-only ${BOOKINFO_ONLY}
