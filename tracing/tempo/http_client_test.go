@@ -179,8 +179,6 @@ func TestGetTrace(t *testing.T) {
 	for _, span := range response.Data.Spans {
 		process, found := response.Data.Processes[span.ProcessID]
 		require.True(t, found, "span [%s] refers to process [%s], which the table does not hold", span.SpanID, span.ProcessID)
-		require.NotNil(t, span.Process)
-		assert.Equal(t, process.ServiceName, span.Process.ServiceName)
 		services[process.ServiceName]++
 	}
 	assert.Equal(t, map[string]int{
@@ -350,11 +348,12 @@ func TestGetTypedSearchAttributes(t *testing.T) {
 	require.Len(t, response.Data, 1)
 	require.Len(t, response.Data[0].Spans, 2)
 
-	// getServiceName reads the matched span's service.name through the same bridge, and it is the
-	// span's process that carries the answer: TracingServiceName is overwritten by the caller
-	// with the service that was queried, so it cannot report whether the bridge worked.
-	require.NotNil(t, response.Data[0].Spans[0].Process)
-	assert.Equal(t, "typeprobe.devex", response.Data[0].Spans[0].Process.ServiceName)
+	// getServiceName reads the matched span's service.name through the same bridge, and the
+	// process the span refers to carries the answer: TracingServiceName is overwritten by the
+	// caller with the service that was queried, so it cannot report whether the bridge worked.
+	process, found := response.Data[0].Processes[response.Data[0].Spans[0].ProcessID]
+	require.True(t, found)
+	assert.Equal(t, "typeprobe.devex", process.ServiceName)
 
 	tags := map[string]json.KeyValue{}
 	for _, tag := range response.Data[0].Spans[0].Tags {

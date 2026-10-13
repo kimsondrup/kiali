@@ -189,7 +189,7 @@ func TestTracesToSpanWithoutFilter(t *testing.T) {
 		TracingServiceName: "reviews.default",
 	}
 	reviewsTracingName := models.TracingName{App: "reviews", Lookup: "reviews"}
-	spans := tracesToSpans(context.Background(), reviewsTracingName, &r, nil, config.NewConfig())
+	spans := tracesToSpans(context.Background(), reviewsTracingName, &r, nil)
 	assert.Len(spans, 2)
 	assert.Equal("t1_process_1", string(spans[0].ProcessID))
 	assert.Equal("t2_process_1", string(spans[1].ProcessID))
@@ -199,18 +199,17 @@ func TestTracesToSpanWithoutFilter(t *testing.T) {
 		TracingServiceName: "rating.default",
 	}
 	ratingsTracingName := models.TracingName{App: "rating", Lookup: "rating"}
-	spans = tracesToSpans(context.Background(), ratingsTracingName, &r, nil, config.NewConfig())
+	spans = tracesToSpans(context.Background(), ratingsTracingName, &r, nil)
 	assert.Len(spans, 2)
 	assert.Equal("t2_process_2", string(spans[0].ProcessID))
 	assert.Equal("t2_process_3", string(spans[1].ProcessID))
 }
 
-// TestTracesToSpanAgreesAcrossProviders reads one captured Tempo search answer through the
-// converter both of Tempo's search transports use, and selects its spans the way each provider
-// is selected for: by the process table, and by the process embedded in a span. The two have to
-// name the same spans, because the business layer is the one place that has no business knowing
-// which provider answered.
-func TestTracesToSpanAgreesAcrossProviders(t *testing.T) {
+// TestTracesToSpanFromTempoSearch reads one captured Tempo search answer through the converter
+// both of Tempo's search transports use, and selects its spans the one way the business layer
+// has: by looking each span's process up in the trace's table. A Tempo answer whose table the
+// converter did not mint contributes no span here, with no error anywhere.
+func TestTracesToSpanFromTempoSearch(t *testing.T) {
 	const serviceName = "reviews.bookinfo"
 
 	body, err := os.ReadFile("../tracing/tracingtest/response.json")
@@ -224,16 +223,12 @@ func TestTracesToSpanAgreesAcrossProviders(t *testing.T) {
 		r.Data = append(r.Data, *converter.ConvertTraceMetadata(trace, serviceName))
 	}
 
-	app := models.TracingName{App: "reviews", Lookup: "reviews"}
-	tempoConf, jaegerConf := config.NewConfig(), config.NewConfig()
-	tempoConf.ExternalServices.Tracing.Provider = config.TempoProvider
-	jaegerConf.ExternalServices.Tracing.Provider = config.JaegerProvider
-
-	byTable := tracesToSpans(context.Background(), app, &r, nil, jaegerConf)
-	byEmbeddedProcess := tracesToSpans(context.Background(), app, &r, nil, tempoConf)
-
-	assert.NotEmpty(t, byTable)
-	assert.Equal(t, byTable, byEmbeddedProcess)
+	spans := tracesToSpans(context.Background(), models.TracingName{App: "reviews", Lookup: "reviews"}, &r, nil)
+	require.NotEmpty(t, spans)
+	for _, span := range spans {
+		require.NotNil(t, span.Process)
+		assert.Equal(t, serviceName, span.Process.ServiceName)
+	}
 }
 
 func TestTracesToSpanWithServiceFilter(t *testing.T) {
@@ -244,7 +239,7 @@ func TestTracesToSpanWithServiceFilter(t *testing.T) {
 		TracingServiceName: "reviews.default",
 	}
 	reviewsTracingName := models.TracingName{App: "reviews", Lookup: "reviews"}
-	spans := tracesToSpans(context.Background(), reviewsTracingName, &r, operationSpanFilter(context.Background(), "default", "reviews"), config.NewConfig())
+	spans := tracesToSpans(context.Background(), reviewsTracingName, &r, operationSpanFilter(context.Background(), "default", "reviews"))
 	assert.Len(spans, 2)
 	assert.Equal("t1_process_1", string(spans[0].ProcessID))
 	assert.Equal("t2_process_1", string(spans[1].ProcessID))
@@ -254,7 +249,7 @@ func TestTracesToSpanWithServiceFilter(t *testing.T) {
 		TracingServiceName: "rating.default",
 	}
 	ratingsTracingName := models.TracingName{App: "rating", Lookup: "rating"}
-	spans = tracesToSpans(context.Background(), ratingsTracingName, &r, operationSpanFilter(context.Background(), "default", "rating"), config.NewConfig())
+	spans = tracesToSpans(context.Background(), ratingsTracingName, &r, operationSpanFilter(context.Background(), "default", "rating"))
 	assert.Len(spans, 1)
 	assert.Equal("t2_process_2", string(spans[0].ProcessID))
 }
@@ -267,7 +262,7 @@ func TestTracesToSpanWithWorkloadFilter(t *testing.T) {
 		TracingServiceName: "reviews.default",
 	}
 	tracingName := models.TracingName{App: "reviews", Workload: "reviews", Lookup: "reviews"}
-	spans := tracesToSpans(context.Background(), tracingName, &r, wkdSpanFilter(context.Background(), "default", tracingName), config.NewConfig())
+	spans := tracesToSpans(context.Background(), tracingName, &r, wkdSpanFilter(context.Background(), "default", tracingName))
 	assert.Len(spans, 2)
 	assert.Equal("t1_process_1", string(spans[0].ProcessID))
 	assert.Equal("t2_process_1", string(spans[1].ProcessID))
@@ -277,7 +272,7 @@ func TestTracesToSpanWithWorkloadFilter(t *testing.T) {
 		TracingServiceName: "rating.default",
 	}
 	tracingRatingsName := models.TracingName{App: "rating", Workload: "rating-v2", Lookup: "rating"}
-	spans = tracesToSpans(context.Background(), tracingRatingsName, &r, wkdSpanFilter(context.Background(), "default", tracingRatingsName), config.NewConfig())
+	spans = tracesToSpans(context.Background(), tracingRatingsName, &r, wkdSpanFilter(context.Background(), "default", tracingRatingsName))
 	assert.Len(spans, 2)
 	assert.Equal("t2_process_2", string(spans[0].ProcessID))
 	assert.Equal("t2_process_3", string(spans[1].ProcessID))
@@ -291,7 +286,7 @@ func TestTracesToSpanWaypointWithWorkloadFilter(t *testing.T) {
 		TracingServiceName: "waypoint.default",
 	}
 	tracingName := models.TracingName{App: "reviews", Workload: "reviews", Lookup: "waypoint", WaypointName: "waypoint"}
-	spans := tracesToSpans(context.Background(), tracingName, &r, wkdSpanFilter(context.Background(), "default", tracingName), config.NewConfig())
+	spans := tracesToSpans(context.Background(), tracingName, &r, wkdSpanFilter(context.Background(), "default", tracingName))
 	assert.Len(spans, 1)
 	// Process is empty here, because the span we are looking for is the service and the process is the waypoint
 }
@@ -304,7 +299,7 @@ func TestTracesToSpanWaypointWithAmbientTagWorkloadFilter(t *testing.T) {
 		TracingServiceName: "waypoint.default",
 	}
 	tracingName := models.TracingName{App: "reviews", Workload: "reviews-v1", Lookup: "waypoint", WaypointName: "waypoint"}
-	spans := tracesToSpans(context.Background(), tracingName, &r, wkdSpanFilter(context.Background(), "default", tracingName), config.NewConfig())
+	spans := tracesToSpans(context.Background(), tracingName, &r, wkdSpanFilter(context.Background(), "default", tracingName))
 	assert.Len(spans, 1)
 }
 
@@ -347,7 +342,7 @@ func TestTracesToSpanWaypointWithAmbientTagsDoNotFallbackToAppPrefix(t *testing.
 		TracingServiceName: "waypoint.default",
 	}
 	tracingName := models.TracingName{App: "reviews", Workload: "reviews-v2", Lookup: "waypoint", WaypointName: "waypoint"}
-	spans := tracesToSpans(context.Background(), tracingName, &r, wkdSpanFilter(context.Background(), "default", tracingName), config.NewConfig())
+	spans := tracesToSpans(context.Background(), tracingName, &r, wkdSpanFilter(context.Background(), "default", tracingName))
 	assert.Len(spans, 0)
 }
 

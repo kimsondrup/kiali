@@ -98,13 +98,11 @@ func newTraceBuilder(traceID jsonModel.TraceID) *traceBuilder {
 	}
 }
 
-// add places a span in the trace, carrying its process both as a table entry it refers to and as
-// an embedded value. Both are needed: a span is selected either by the service name of its
-// embedded process or by looking its process ID up in the table, and which of the two happens is
-// not this layer's business.
+// add places a span in the trace, referring to its process by the ID it has in the trace's table.
+// The process is not embedded in the span as well: it is the table Jaeger's trace model resolves
+// a span's process from, and the frontend and the business layer both read it from there.
 func (b *traceBuilder) add(span jsonModel.Span, process jsonModel.Process) {
 	span.ProcessID = b.processID(process)
-	span.Process = &process
 	b.spans = append(b.spans, span)
 }
 

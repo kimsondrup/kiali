@@ -74,7 +74,7 @@ func (in *TracingService) getFilteredSpans(ctx context.Context, ns string, app m
 	if err != nil {
 		return []models.TracingSpan{}, err
 	}
-	spans := tracesToSpans(ctx, app, r, filter, in.conf)
+	spans := tracesToSpans(ctx, app, r, filter)
 
 	return spans, nil
 }
@@ -389,7 +389,7 @@ func spanMatchesWorkload(ctx context.Context, span *jsonModel.Span, namespace st
 	return false
 }
 
-func tracesToSpans(ctx context.Context, app models.TracingName, r *models.TracingResponse, filter SpanFilter, conf *config.Config) []models.TracingSpan {
+func tracesToSpans(ctx context.Context, app models.TracingName, r *models.TracingResponse, filter SpanFilter) []models.TracingSpan {
 	spans := []models.TracingSpan{}
 	for _, trace := range r.Data {
 		if app.WaypointName != "" {
@@ -403,39 +403,22 @@ func tracesToSpans(ctx context.Context, app models.TracingName, r *models.Tracin
 			}
 			continue
 		}
-		// Diferent for Tempo & Jaeger
-		// For Tempo the proccess matched with the service name of the trace batch
-		// So t is already filtered in the query
-		if conf.ExternalServices.Tracing.Provider == config.TempoProvider {
-			// Second, find spans for these processes
-			for _, span := range trace.Spans {
-				if span.Process.ServiceName == r.TracingServiceName {
-					if filter == nil || filter(&span) {
-						spans = append(spans, models.TracingSpan{
-							Span:      span,
-							TraceSize: len(trace.Spans),
-						})
-					}
-				}
+		// First, get the desired processes for our service
+		processes := make(map[jsonModel.ProcessID]jsonModel.Process)
+		for pId, process := range trace.Processes {
+			if process.ServiceName == app.Lookup || process.ServiceName == r.TracingServiceName {
+				processes[pId] = process
 			}
-		} else {
-			// First, get the desired processes for our service
-			processes := make(map[jsonModel.ProcessID]jsonModel.Process)
-			for pId, process := range trace.Processes {
-				if process.ServiceName == app.Lookup || process.ServiceName == r.TracingServiceName {
-					processes[pId] = process
-				}
-			}
-			// Second, find spans for these processes
-			for _, span := range trace.Spans {
-				if p, ok := processes[span.ProcessID]; ok {
-					span.Process = &p
-					if filter == nil || filter(&span) {
-						spans = append(spans, models.TracingSpan{
-							Span:      span,
-							TraceSize: len(trace.Spans),
-						})
-					}
+		}
+		// Second, find spans for these processes
+		for _, span := range trace.Spans {
+			if p, ok := processes[span.ProcessID]; ok {
+				span.Process = &p
+				if filter == nil || filter(&span) {
+					spans = append(spans, models.TracingSpan{
+						Span:      span,
+						TraceSize: len(trace.Spans),
+					})
 				}
 			}
 		}

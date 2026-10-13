@@ -102,36 +102,27 @@ func TestTracesFromOTLPGroupsSpansByTrace(t *testing.T) {
 	}
 }
 
-// TestSpanSelectionsAgree pins what makes one converter serve both providers. business/tracing.go
-// selects the spans of a service either by the service name of the process embedded in a span, or
-// by looking the span's process ID up in the trace's process table; a converter that fills in only
-// one of the two leaves the other selecting nothing, with no error anywhere.
-func TestSpanSelectionsAgree(t *testing.T) {
+// TestSpansResolveInTheProcessTable pins what makes one converter serve both providers. A span
+// names its process by the ID it has in the trace's process table, and business.tracesToSpans
+// selects a service's spans by looking that ID up; a converter that leaves either side out
+// selects nothing, with no error anywhere.
+func TestSpansResolveInTheProcessTable(t *testing.T) {
 	const serviceName = "podinfo.tp-otlp-sf2ed7.svc.cluster.local"
 
 	for _, trace := range TracesFromOTLP(decodeAPIV3(t, apiv3SearchHTTP)) {
-		byEmbeddedProcess := []jsonModel.SpanID{}
-		for _, span := range trace.Spans {
-			if span.Process.ServiceName == serviceName {
-				byEmbeddedProcess = append(byEmbeddedProcess, span.SpanID)
-			}
-		}
-
 		processes := map[jsonModel.ProcessID]jsonModel.Process{}
 		for processID, process := range trace.Processes {
 			if process.ServiceName == serviceName {
 				processes[processID] = process
 			}
 		}
-		byProcessTable := []jsonModel.SpanID{}
+		selected := []jsonModel.SpanID{}
 		for _, span := range trace.Spans {
 			if _, found := processes[span.ProcessID]; found {
-				byProcessTable = append(byProcessTable, span.SpanID)
+				selected = append(selected, span.SpanID)
 			}
 		}
-
-		assert.NotEmpty(t, byProcessTable)
-		assert.Equal(t, byProcessTable, byEmbeddedProcess)
+		assert.NotEmpty(t, selected)
 	}
 }
 
@@ -437,10 +428,8 @@ func TestProcessTable(t *testing.T) {
 	assert.Equal(jsonModel.ProcessID("p1"), trace.Spans[2].ProcessID)
 	assert.Equal(jsonModel.ProcessID("p3"), trace.Spans[3].ProcessID)
 	for _, span := range trace.Spans {
-		process, found := trace.Processes[span.ProcessID]
+		_, found := trace.Processes[span.ProcessID]
 		require.True(found)
-		require.NotNil(span.Process)
-		assert.Equal(process.ServiceName, span.Process.ServiceName)
 	}
 }
 
