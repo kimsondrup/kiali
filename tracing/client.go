@@ -54,14 +54,26 @@ type GRPCClientInterface interface {
 	GetServicesList(ctx context.Context) ([]string, error)
 }
 
+// transport is the protocol a Client sends its requests over. It is recorded when the client is
+// built rather than inferred from which clients happen to be set, because Tempo with use_grpc holds
+// both a gRPC and an HTTP client and still reads some requests over HTTP.
+type transport int
+
+const (
+	transportHTTP transport = iota
+	transportGRPC
+)
+
 // Client for Tracing API.
 type Client struct {
 	ClientInterface
-	httpTracingClient HTTPClientInterface
-	grpcClient        GRPCClientInterface
-	httpClient        http.Client
 	baseURL           *url.URL
 	customHeaders     map[string]string
+	grpcClient        GRPCClientInterface
+	httpClient        http.Client
+	httpTracingClient HTTPClientInterface
+	provider          config.TracingProvider
+	transport         transport
 }
 
 // NewClient creates a tracing Client. If it fails to create the client for any reason,
@@ -169,7 +181,7 @@ func newClient(ctx context.Context, conf *config.Config, token string) (*Client,
 				return nil, err
 			}
 			zl.Info().Msgf("Create [%s] GRPC client. address=[%s]", cfgTracing.Provider, address)
-			return &Client{httpTracingClient: httpTracingClient, grpcClient: client, customHeaders: cfgTracing.CustomHeaders}, nil
+			return &Client{customHeaders: cfgTracing.CustomHeaders, grpcClient: client, httpTracingClient: httpTracingClient, provider: config.JaegerProvider, transport: transportGRPC}, nil
 		} else {
 			zl.Error().Msgf("Error creating client: %v", err)
 			return nil, err
@@ -212,15 +224,15 @@ func newClient(ctx context.Context, conf *config.Config, token string) (*Client,
 					zl.Error().Msgf("Error creating gRPC Tempo Client: %v", err)
 					return nil, err
 				}
-				return &Client{httpTracingClient: httpTracingClient, grpcClient: streamClient, httpClient: client, baseURL: u, customHeaders: cfgTracing.CustomHeaders}, nil
+				return &Client{baseURL: u, customHeaders: cfgTracing.CustomHeaders, grpcClient: streamClient, httpClient: client, httpTracingClient: httpTracingClient, provider: config.TempoProvider, transport: transportGRPC}, nil
 			}
-		} else {
-			httpTracingClient, err = jaeger.NewJaegerClient(client, u)
-			if err != nil {
-				return nil, err
-			}
+			return &Client{baseURL: u, customHeaders: cfgTracing.CustomHeaders, httpClient: client, httpTracingClient: httpTracingClient, provider: config.TempoProvider, transport: transportHTTP}, nil
 		}
-		return &Client{httpTracingClient: httpTracingClient, httpClient: client, baseURL: u, customHeaders: cfgTracing.CustomHeaders}, nil
+		httpTracingClient, err = jaeger.NewJaegerClient(client, u)
+		if err != nil {
+			return nil, err
+		}
+		return &Client{baseURL: u, customHeaders: cfgTracing.CustomHeaders, httpClient: client, httpTracingClient: httpTracingClient, provider: config.JaegerProvider, transport: transportHTTP}, nil
 	}
 }
 
@@ -234,7 +246,7 @@ func (in *Client) GetAppTraces(ctx context.Context, namespace, app string, q mod
 	promtimer := internalmetrics.GetTracingProcessingTimePrometheusTimer("AppTraces")
 	defer internalmetrics.ObserveDurationAndLogResults(ctx, config.Get(), promtimer, "TracingProcessingTime", nil, "AppTraces")
 
-	if in.grpcClient == nil {
+	if in.transport == transportHTTP {
 		return in.httpTracingClient.GetAppTracesHTTP(ctx, in.httpClient, in.baseURL, serviceName, q)
 	}
 	return in.grpcClient.FindTraces(ctx, serviceName, q)
@@ -244,20 +256,19 @@ func (in *Client) GetAppTraces(ctx context.Context, namespace, app string, q mod
 func (in *Client) GetTraceDetail(ctx context.Context, strTraceID string) (*models.TracingSingleTrace, error) {
 	ctx = in.prepareContextForClient(ctx)
 
-	cfg := config.Get()
-
 	// create a timer to time the tracing query. Note that we will always take the measurement even on failure
 	promtimer := internalmetrics.GetTracingProcessingTimePrometheusTimer("TraceDetail")
-	defer internalmetrics.ObserveDurationAndLogResults(ctx, cfg, promtimer, "TracingProcessingTime", nil, "TraceDetail")
+	defer internalmetrics.ObserveDurationAndLogResults(ctx, config.Get(), promtimer, "TracingProcessingTime", nil, "TraceDetail")
 
-	if in.grpcClient == nil || cfg.ExternalServices.Tracing.Provider == config.TempoProvider {
-		if in.httpTracingClient != nil {
-			return in.httpTracingClient.GetTraceDetailHTTP(ctx, in.httpClient, in.baseURL, strTraceID)
-		} else {
-			return nil, fmt.Errorf("error getting trace details")
-		}
+	// Tempo reads a single trace over HTTP even with use_grpc: its gRPC streaming API only
+	// searches, so a Tempo client always carries an HTTP client for the detail.
+	if in.transport == transportGRPC && in.provider != config.TempoProvider {
+		return in.grpcClient.GetTrace(ctx, strTraceID)
 	}
-	return in.grpcClient.GetTrace(ctx, strTraceID)
+	if in.httpTracingClient == nil {
+		return nil, fmt.Errorf("error getting trace details")
+	}
+	return in.httpTracingClient.GetTraceDetailHTTP(ctx, in.httpClient, in.baseURL, strTraceID)
 }
 
 // GetErrorTraces fetches number of traces in error for the given app
@@ -292,7 +303,7 @@ func (in *Client) GetServiceStatus(ctx context.Context) (bool, error) {
 	defer internalmetrics.ObserveDurationAndLogResults(ctx, config.Get(), promtimer, "TracingProcessingTime", nil, "ServiceStatus")
 
 	// Check Service Status using HTTP when gRPC is not enabled
-	if in.grpcClient == nil {
+	if in.transport == transportHTTP {
 		return in.httpTracingClient.GetServiceStatusHTTP(ctx, in.httpClient, in.baseURL)
 	}
 
@@ -307,7 +318,7 @@ func (in *Client) GetServices(ctx context.Context) ([]string, error) {
 	defer internalmetrics.ObserveDurationAndLogResults(ctx, config.Get(), promtimer, "TracingProcessingTime", nil, "ServiceStatus")
 
 	// Check Service Status using HTTP when gRPC is not enabled
-	if in.grpcClient == nil {
+	if in.transport == transportHTTP {
 		return in.httpTracingClient.GetServices(ctx, in.httpClient, in.baseURL)
 	}
 

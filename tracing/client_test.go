@@ -2,11 +2,15 @@ package tracing
 
 import (
 	"context"
+	"net/http"
+	"net/url"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/kiali/kiali/config"
+	"github.com/kiali/kiali/models"
 	"github.com/kiali/kiali/tracing/jaeger"
 )
 
@@ -142,4 +146,118 @@ func TestCreateTempoHTTPClient_OAuth2(t *testing.T) {
 
 	assert.Nil(t, err)
 	assert.NotNil(t, tracingClient)
+}
+
+func TestNewClientRecordsProviderAndTransport(t *testing.T) {
+	cases := map[string]struct {
+		expectedProvider  config.TracingProvider
+		expectedTransport transport
+		provider          config.TracingProvider
+		useGRPC           bool
+	}{
+		"jaeger over HTTP": {provider: config.JaegerProvider, useGRPC: false, expectedProvider: config.JaegerProvider, expectedTransport: transportHTTP},
+		"jaeger over gRPC": {provider: config.JaegerProvider, useGRPC: true, expectedProvider: config.JaegerProvider, expectedTransport: transportGRPC},
+		"tempo over HTTP":  {provider: config.TempoProvider, useGRPC: false, expectedProvider: config.TempoProvider, expectedTransport: transportHTTP},
+		"tempo over gRPC":  {provider: config.TempoProvider, useGRPC: true, expectedProvider: config.TempoProvider, expectedTransport: transportGRPC},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			conf := config.NewConfig()
+			conf.ExternalServices.Tracing.Enabled = true
+			conf.ExternalServices.Tracing.Provider = tc.provider
+			conf.ExternalServices.Tracing.UseGRPC = tc.useGRPC
+
+			client, err := NewClient(context.Background(), conf, token, false)
+			require.NoError(t, err)
+			require.NotNil(t, client)
+
+			assert.Equal(t, tc.expectedProvider, client.provider)
+			assert.Equal(t, tc.expectedTransport, client.transport)
+		})
+	}
+}
+
+// recordingHTTPClient and recordingGRPCClient record which transport a request reached, so the
+// dispatch test can tell them apart without a backend.
+type recordingHTTPClient struct {
+	calls []string
+}
+
+func (r *recordingHTTPClient) GetAppTracesHTTP(_ context.Context, _ http.Client, _ *url.URL, _ string, _ models.TracingQuery) (*models.TracingResponse, error) {
+	r.calls = append(r.calls, "traces")
+	return &models.TracingResponse{}, nil
+}
+
+func (r *recordingHTTPClient) GetTraceDetailHTTP(_ context.Context, _ http.Client, _ *url.URL, _ string) (*models.TracingSingleTrace, error) {
+	r.calls = append(r.calls, "detail")
+	return nil, nil
+}
+
+func (r *recordingHTTPClient) GetServiceStatusHTTP(_ context.Context, _ http.Client, _ *url.URL) (bool, error) {
+	r.calls = append(r.calls, "status")
+	return true, nil
+}
+
+func (r *recordingHTTPClient) GetServices(_ context.Context, _ http.Client, _ *url.URL) ([]string, error) {
+	r.calls = append(r.calls, "services")
+	return nil, nil
+}
+
+type recordingGRPCClient struct {
+	calls []string
+}
+
+func (r *recordingGRPCClient) FindTraces(_ context.Context, _ string, _ models.TracingQuery) (*models.TracingResponse, error) {
+	r.calls = append(r.calls, "traces")
+	return &models.TracingResponse{}, nil
+}
+
+func (r *recordingGRPCClient) GetTrace(_ context.Context, _ string) (*models.TracingSingleTrace, error) {
+	r.calls = append(r.calls, "detail")
+	return nil, nil
+}
+
+func (r *recordingGRPCClient) GetServices(_ context.Context) (bool, error) {
+	r.calls = append(r.calls, "status")
+	return true, nil
+}
+
+func (r *recordingGRPCClient) GetServicesList(_ context.Context) ([]string, error) {
+	r.calls = append(r.calls, "services")
+	return nil, nil
+}
+
+func TestClientDispatchesOnTransport(t *testing.T) {
+	cases := map[string]struct {
+		expectedGRPC []string
+		expectedHTTP []string
+		provider     config.TracingProvider
+		transport    transport
+	}{
+		// Tempo's gRPC API only searches, so its detail stays on HTTP.
+		"tempo over gRPC":  {provider: config.TempoProvider, transport: transportGRPC, expectedGRPC: []string{"traces", "status", "services"}, expectedHTTP: []string{"detail"}},
+		"jaeger over gRPC": {provider: config.JaegerProvider, transport: transportGRPC, expectedGRPC: []string{"traces", "detail", "status", "services"}},
+		"tempo over HTTP":  {provider: config.TempoProvider, transport: transportHTTP, expectedHTTP: []string{"traces", "detail", "status", "services"}},
+		"jaeger over HTTP": {provider: config.JaegerProvider, transport: transportHTTP, expectedHTTP: []string{"traces", "detail", "status", "services"}},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			httpClient := &recordingHTTPClient{}
+			grpcClient := &recordingGRPCClient{}
+			client := &Client{grpcClient: grpcClient, httpTracingClient: httpClient, provider: tc.provider, transport: tc.transport}
+			ctx := context.Background()
+
+			_, err := client.GetAppTraces(ctx, "ns", "app", models.TracingQuery{})
+			require.NoError(t, err)
+			_, err = client.GetTraceDetail(ctx, "0123456789abcdef")
+			require.NoError(t, err)
+			_, err = client.GetServiceStatus(ctx)
+			require.NoError(t, err)
+			_, err = client.GetServices(ctx)
+			require.NoError(t, err)
+
+			assert.Equal(t, tc.expectedGRPC, grpcClient.calls)
+			assert.Equal(t, tc.expectedHTTP, httpClient.calls)
+		})
+	}
 }
