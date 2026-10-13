@@ -46,10 +46,6 @@ type StructuredError struct {
 	TraceID string `json:"traceID,omitempty"`
 }
 
-type TracingServices struct {
-	Data []string `json:"data"`
-}
-
 type TracingResponse struct {
 	Data               []jsonModel.Trace `json:"data"`
 	Errors             []StructuredError `json:"errors"`

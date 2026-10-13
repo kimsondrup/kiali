@@ -47,7 +47,6 @@ func TestTracingDTOWireNames(t *testing.T) {
 		want  []string
 	}{
 		{"StructuredError", errs[0], []string{"code", "msg", "traceID"}},
-		{"TracingServices", TracingServices{Data: []string{"productpage"}}, []string{"data"}},
 		{"TracingResponse", TracingResponse{Data: []jsonModel.Trace{trace}, Errors: errs, TracingServiceName: "productpage"}, []string{"data", "errors", "tracingServiceName"}},
 		{"TracingSingleTrace", TracingSingleTrace{Data: trace, Errors: errs}, []string{"data", "errors"}},
 		{"TracingSpan", TracingSpan{Span: span, TraceSize: 7}, []string{"duration", "flags", "logs", "operationName", "parentSpanID", "process", "processID", "references", "spanID", "startTime", "tags", "traceID", "traceSize", "warnings"}},
